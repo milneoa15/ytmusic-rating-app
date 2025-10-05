@@ -1,0 +1,91 @@
+/* Global Styles - Dark Theme (YouTube Style) */
+
+:root {
+  /* Dark theme colors - YouTube Music style (black, grey, red, white only) */
+  --bg-primary: #030303;
+  --bg-secondary: #121212;
+  --bg-elevated: #212121;
+  --bg-hover: #2a2a2a;
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --text-disabled: #717171;
+  --border-color: #2a2a2a;
+  --accent-primary: #ffffff;
+  --accent-hover: #f1f1f1;
+  --red-primary: #c62828;
+  --red-hover: #8b0000;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: var(--bg-primary);
+  min-height: 100vh;
+  color: var(--text-primary);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+input, textarea {
+  font-family: inherit;
+  outline: none;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-disabled);
+}
+
+/* Common utility classes */
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.error {
+  background: rgba(255, 78, 69, 0.1);
+  color: var(--red-primary);
+  border: 1px solid var(--red-primary);
+  padding: 1rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+
+.success {
+  background: rgba(62, 166, 255, 0.1);
+  color: var(--accent-primary);
+  padding: 1rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+}

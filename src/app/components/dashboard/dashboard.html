@@ -1,0 +1,60 @@
+<div class="dashboard-container">
+  <nav class="top-nav">
+    <div class="nav-left">
+      <h1><span class="red-letter">S</span>onic<span class="red-letter">V</span>ault</h1>
+    </div>
+    <div class="nav-right">
+      <span class="user-name">{{ userName }}</span>
+      <button class="logout-btn" (click)="logout()">Logout</button>
+    </div>
+  </nav>
+
+  <div class="dashboard-content">
+    <div class="welcome-section">
+      <h2>Welcome back, {{ userName }}!</h2>
+      <p class="stats">You have rated {{ totalRatings }} songs so far</p>
+    </div>
+
+    <div class="actions-grid">
+      <div class="action-card" (click)="importPlaylists()">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+          </svg>
+        </div>
+        <h3>Import Playlists</h3>
+        <p>Select and import multiple playlists from YouTube Music to build your library</p>
+      </div>
+
+      <div class="action-card" (click)="viewLibrary()">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 5h-3v5.5c0 1.38-1.12 2.5-2.5 2.5S10 13.88 10 12.5s1.12-2.5 2.5-2.5c.57 0 1.08.19 1.5.51V5h4v2zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6z"/>
+          </svg>
+        </div>
+        <h3>Song Library</h3>
+        <p>Browse, filter, rate, and categorize all your imported songs</p>
+      </div>
+
+      <div class="action-card" (click)="quickRating()">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+          </svg>
+        </div>
+        <h3>Quick Rating</h3>
+        <p>Quickly rate songs one by one with the dedicated rating interface</p>
+      </div>
+
+      <div class="action-card" (click)="exportPlaylist()">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+          </svg>
+        </div>
+        <h3>Export Playlist</h3>
+        <p>Create playlists from rated songs and export back to YouTube Music</p>
+      </div>
+    </div>
+  </div>
+</div>

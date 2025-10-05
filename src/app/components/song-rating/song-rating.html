@@ -1,0 +1,113 @@
+<div class="rating-container" *ngIf="currentSong">
+  <div class="header">
+    <div class="header-actions">
+      <div class="progress-info">
+        <span>Song {{ currentIndex + 1 }} of {{ songs.length }}</span>
+        <span>Rated: {{ ratedCount }} / {{ songs.length }}</span>
+      </div>
+      <button class="back-btn" (click)="backToDashboard()">← Dashboard</button>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-fill" [style.width.%]="progress"></div>
+  </div>
+
+  <div class="song-display">
+    <div class="song-thumbnail-large">
+      <img [src]="currentSong.thumbnailUrl" [alt]="currentSong.title">
+    </div>
+    
+    <div class="song-details">
+      <h3>{{ currentSong.title }}</h3>
+      <p class="artist">{{ currentSong.artist }}</p>
+      <p class="album" *ngIf="currentSong.album">{{ currentSong.album }}</p>
+    </div>
+  </div>
+
+  <div class="rating-section">
+    <div class="rating-buttons">
+      <button 
+        *ngFor="let rating of [1,2,3,4,5,6,7,8,9,10]"
+        class="rating-btn"
+        [class.selected]="currentRating === rating"
+        (click)="rateSong(rating)">
+        {{ rating }}
+      </button>
+    </div>
+  </div>
+
+  <div class="theme-section">
+    <div class="theme-header">
+      <h4>Themes</h4>
+      <button class="create-theme-btn" (click)="openThemeModal()">+ Create Theme</button>
+    </div>
+    <div class="all-themes" #themesContainer>
+      <button 
+        *ngFor="let theme of getSortedThemes()" 
+        class="theme-badge"
+        [class.selected]="isSongInTheme(theme.id)"
+        [style.background-color]="theme.color"
+        (click)="toggleSongTheme(theme.id)">
+        {{ theme.name }}
+      </button>
+      <p class="no-themes" *ngIf="themes.length === 0">No themes yet. Create one!</p>
+    </div>
+  </div>
+
+  <div class="navigation-buttons">
+    <button 
+      class="nav-btn" 
+      (click)="previousSong()"
+      [disabled]="currentIndex === 0">
+      ← Previous
+    </button>
+
+    <button 
+      class="skip-btn" 
+      (click)="skipSong()"
+      [disabled]="currentIndex === songs.length - 1">
+      Skip
+    </button>
+
+    <button 
+      class="finish-btn"
+      *ngIf="currentIndex === songs.length - 1"
+      (click)="finishRating()">
+      Finish & Go to Library
+    </button>
+  </div>
+</div>
+
+<!-- Create Theme Modal -->
+<div class="modal-overlay" *ngIf="showThemeModal" (click)="closeThemeModal()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3>{{ editingTheme ? 'Edit' : 'Create' }} Theme</h3>
+    <div class="modal-body">
+      <label>Theme Name</label>
+      <input type="text" [(ngModel)]="newThemeName" placeholder="e.g., Workout, Chill, Favorites" maxlength="13">
+      
+      <label class="color-picker-label">
+        Theme Color
+        <span class="color-preview" [style.background-color]="newThemeColor">{{ newThemeColor }}</span>
+      </label>
+      <input type="color" [(ngModel)]="newThemeColor" class="color-input">
+      
+      <label class="presets-label">Or choose a preset:</label>
+      <div class="color-presets">
+        <button *ngFor="let color of ['#1565c0', '#2e7d32', '#f57c00', '#6a1b9a', '#00838f', '#5d4037', '#424242']" 
+          [class.selected]="newThemeColor === color"
+          [style.background-color]="color"
+          (click)="newThemeColor = color">
+        </button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" (click)="closeThemeModal()">Cancel</button>
+      <button class="save-btn" (click)="saveTheme()" [disabled]="!newThemeName.trim()">
+        {{ editingTheme ? 'Update' : 'Create' }}
+      </button>
+    </div>
+  </div>
+</div>
+

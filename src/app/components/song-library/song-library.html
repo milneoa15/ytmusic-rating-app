@@ -1,0 +1,320 @@
+<div class="library-container">
+  <div class="header">
+    <h2>Song Library</h2>
+    <div class="header-actions">
+      <button class="action-btn" (click)="goToQuickRating()">Quick Rate</button>
+      <button class="action-btn primary" (click)="goToExport()">Export</button>
+      <button class="back-btn" (click)="backToDashboard()">← Dashboard</button>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <!-- Sidebar Filters -->
+    <div class="sidebar">
+      <div class="filter-section">
+        <h3>Search</h3>
+        <input 
+          type="text" 
+          class="search-input" 
+          [(ngModel)]="searchQuery" 
+          (ngModelChange)="applyFilters()"
+          placeholder="Search songs...">
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-header">
+          <h3>Rating</h3>
+        </div>
+        <div class="rating-slider">
+          <label>Min: {{ minRating }}</label>
+          <input 
+            type="range" 
+            min="0" 
+            max="10" 
+            [(ngModel)]="minRating" 
+            (ngModelChange)="applyFilters()">
+          <label>Max: {{ maxRating }}</label>
+          <input 
+            type="range" 
+            min="0" 
+            max="10" 
+            [(ngModel)]="maxRating" 
+            (ngModelChange)="applyFilters()">
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-header collapsible" (click)="toggleArtistsCollapse()">
+          <h3>Artists</h3>
+          <div class="header-right">
+            <span class="filter-count" *ngIf="selectedArtists.size > 0">{{ selectedArtists.size }}</span>
+            <span class="collapse-icon">{{ artistsCollapsed ? '▼' : '▲' }}</span>
+          </div>
+        </div>
+        <div class="filter-list" [class.collapsed]="artistsCollapsed">
+          <input 
+            type="text" 
+            [(ngModel)]="artistSearchQuery" 
+            placeholder="Search artists..."
+            class="artist-search-input"
+            (click)="$event.stopPropagation()">
+          <label *ngFor="let artist of filteredArtists" class="filter-item">
+            <input 
+              type="checkbox" 
+              [checked]="selectedArtists.has(artist)"
+              (change)="toggleArtistFilter(artist)">
+            <span>{{ artist }}</span>
+          </label>
+          <div *ngIf="filteredArtists.length === 0" class="no-results">No artists found</div>
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-header collapsible" (click)="toggleThemesCollapse()">
+          <h3>Themes</h3>
+          <div class="header-right">
+            <button class="add-theme-btn" (click)="openThemeModal(); $event.stopPropagation()" title="Create new theme">+</button>
+            <span class="filter-count" *ngIf="selectedThemes.size > 0">{{ selectedThemes.size }}</span>
+            <span class="collapse-icon">{{ themesCollapsed ? '▼' : '▲' }}</span>
+          </div>
+        </div>
+        <div class="themes-list" [class.collapsed]="themesCollapsed">
+          <label *ngFor="let theme of themes" class="theme-item">
+            <input 
+              type="checkbox" 
+              [checked]="selectedThemes.has(theme.id)"
+              (change)="toggleThemeFilter(theme.id)">
+            <span class="theme-badge" [style.background-color]="theme.color">
+              {{ theme.name }}
+            </span>
+            <button class="edit-btn" (click)="openThemeModal(theme); $event.stopPropagation()">✏️</button>
+            <button class="delete-btn" (click)="deleteTheme(theme); $event.stopPropagation()">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+              </svg>
+            </button>
+          </label>
+        </div>
+      </div>
+
+      <button class="clear-filters-btn" (click)="clearAllFilters()">Clear All Filters</button>
+    </div>
+
+    <!-- Song List -->
+    <div class="songs-container">
+      <div class="bulk-actions" *ngIf="selectMode">
+        <button class="exit-select-btn" (click)="toggleSelectMode()">✕</button>
+        <span class="selected-count">{{ selectedSongs.size }} selected</span>
+        <button class="bulk-btn" (click)="selectAll()">Select All</button>
+        <button class="bulk-btn" (click)="deselectAll()">Deselect All</button>
+        <button class="bulk-btn" (click)="openBulkRating()" [disabled]="selectedSongs.size === 0">Rate Selected</button>
+        <button class="bulk-btn" (click)="openBulkThemeAssignment()" [disabled]="selectedSongs.size === 0">Add Theme</button>
+        <button class="bulk-btn delete" (click)="bulkDelete()" [disabled]="selectedSongs.size === 0">Delete Selected</button>
+      </div>
+
+      <div class="songs-header">
+        <div class="view-controls">
+          <button 
+            [class.active]="viewMode === 'list'" 
+            (click)="viewMode = 'list'">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+            </svg>
+          </button>
+          <button 
+            [class.active]="viewMode === 'grid'" 
+            (click)="viewMode = 'grid'">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/>
+            </svg>
+          </button>
+          <button class="select-mode-btn" *ngIf="!selectMode" (click)="toggleSelectMode()">
+            Select
+          </button>
+        </div>
+        <div class="sort-controls">
+          <label>Sort by:</label>
+          <button [class.active]="sortBy === 'title'" (click)="changeSorting('title')">
+            Title {{ sortBy === 'title' ? (sortAscending ? '▲' : '▼') : '' }}
+          </button>
+          <button [class.active]="sortBy === 'artist'" (click)="changeSorting('artist')">
+            Artist {{ sortBy === 'artist' ? (sortAscending ? '▲' : '▼') : '' }}
+          </button>
+          <button [class.active]="sortBy === 'rating'" (click)="changeSorting('rating')">
+            Rating {{ sortBy === 'rating' ? (sortAscending ? '▲' : '▼') : '' }}
+          </button>
+        </div>
+        <div class="song-count">
+          {{ filteredSongs.length }} / {{ allSongs.length }} songs
+        </div>
+      </div>
+
+      <div class="songs-list" [class.grid-view]="viewMode === 'grid'" [class.select-mode]="selectMode">
+        <div *ngFor="let song of filteredSongs" 
+             class="song-item" 
+             [class.selected]="selectedSongs.has(song.id)"
+             (click)="selectMode && toggleSongSelection(song.id)">
+          <input 
+            *ngIf="selectMode" 
+            type="checkbox" 
+            class="song-checkbox" 
+            [checked]="selectedSongs.has(song.id)"
+            (change)="toggleSongSelection(song.id)"
+            (click)="$event.stopPropagation()">
+          <img [src]="song.thumbnailUrl" [alt]="song.title" class="song-thumbnail" (click)="$event.stopPropagation()">
+          
+          <div class="song-info">
+            <div class="song-title">{{ song.title }}</div>
+            <div class="song-artist">{{ song.artist }}</div>
+          </div>
+
+          <div class="song-themes" (click)="$event.stopPropagation()">
+            <span 
+              *ngFor="let catId of getSortedThemes(song.themes || [])" 
+              class="theme-tag" 
+              [style.background-color]="getThemeById(catId)?.color">
+              {{ getThemeById(catId)?.name }}
+            </span>
+            <button class="assign-theme-btn" (click)="openThemeAssignment(song)">+</button>
+          </div>
+
+          <div class="song-rating" (click)="$event.stopPropagation()">
+            <div class="rating-buttons">
+              <button 
+                *ngFor="let r of [1,2,3,4,5,6,7,8,9,10]" 
+                class="rating-btn"
+                [class.active]="song.rating === r"
+                [class.low]="r <= 3"
+                [class.mid]="r >= 4 && r <= 7"
+                [class.high]="r >= 8"
+                (click)="rateSong(song, r)">
+                {{ r }}
+              </button>
+            </div>
+          </div>
+
+          <button class="delete-song-btn" (click)="deleteSong(song)" title="Delete song">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div *ngIf="filteredSongs.length === 0" class="empty-state">
+          <p>No songs match your filters</p>
+          <button (click)="clearAllFilters()">Clear Filters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Theme Modal -->
+<div class="modal-overlay" *ngIf="showThemeModal" (click)="closeThemeModal()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3>{{ editingTheme ? 'Edit' : 'Create' }} Theme</h3>
+    <div class="modal-body">
+      <label>Theme Name</label>
+      <input type="text" [(ngModel)]="newThemeName" placeholder="e.g., Workout, Chill, Favorites" maxlength="13">
+      
+      <label class="color-picker-label">
+        Theme Color
+        <span class="color-preview" [style.background-color]="newThemeColor">{{ newThemeColor }}</span>
+      </label>
+      <input type="color" [(ngModel)]="newThemeColor" class="color-input">
+      
+      <label class="presets-label">Or choose a preset:</label>
+      <div class="color-presets">
+        <button *ngFor="let color of ['#1565c0', '#2e7d32', '#f57c00', '#6a1b9a', '#00838f', '#5d4037', '#424242']" 
+          [class.selected]="newThemeColor === color"
+          [style.background-color]="color"
+          (click)="newThemeColor = color">
+        </button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" (click)="closeThemeModal()">Cancel</button>
+      <button class="save-btn" (click)="saveTheme()" [disabled]="!newThemeName.trim()">
+        {{ editingTheme ? 'Update' : 'Create' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Theme Assignment Modal -->
+<div class="modal-overlay" *ngIf="assigningThemesForSong" (click)="closeThemeAssignment()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3>Assign Themes to "{{ assigningThemesForSong.title }}"</h3>
+    <div class="modal-body">
+      <div class="themes-checklist">
+        <label *ngFor="let theme of themes" class="theme-checkbox">
+          <input 
+            type="checkbox" 
+            [checked]="isSongInTheme(assigningThemesForSong, theme.id)"
+            (change)="toggleSongTheme(assigningThemesForSong, theme.id)">
+          <span class="theme-badge" [style.background-color]="theme.color">
+            {{ theme.name }}
+          </span>
+        </label>
+      </div>
+      <p *ngIf="themes.length === 0" class="empty-message">
+        No themes yet. Create one in the sidebar!
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="save-btn" (click)="closeThemeAssignment()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Rating Modal -->
+<div class="modal-overlay" *ngIf="showBulkRatingModal" (click)="showBulkRatingModal = false">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3>Rate {{ selectedSongs.size }} Songs</h3>
+    <div class="modal-body">
+      <label>Select Rating:</label>
+      <div class="rating-buttons-modal">
+        <button 
+          *ngFor="let r of [1,2,3,4,5,6,7,8,9,10]" 
+          class="rating-btn-modal"
+          [class.selected]="bulkRating === r"
+          (click)="bulkRating = r">
+          {{ r }}
+        </button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="save-btn" (click)="confirmBulkRate()">Apply Rating</button>
+      <button class="unrate-btn" (click)="confirmBulkUnrate()">Set to Unrated</button>
+      <button class="cancel-btn" (click)="showBulkRatingModal = false">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Theme Assignment Modal -->
+<div class="modal-overlay" *ngIf="showBulkThemeModal" (click)="showBulkThemeModal = false">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3>Add Themes to {{ selectedSongs.size }} Songs</h3>
+    <div class="modal-body">
+      <label>Select themes to apply:</label>
+      <div class="themes-checklist bulk-themes-list">
+        <label *ngFor="let theme of themes" class="theme-checkbox">
+          <input 
+            type="checkbox" 
+            [checked]="selectedBulkThemes.has(theme.id)"
+            (change)="toggleBulkTheme(theme.id)">
+          <span class="theme-badge" [style.background-color]="theme.color">
+            {{ theme.name }}
+          </span>
+        </label>
+      </div>
+      <p *ngIf="themes.length === 0" class="empty-message">
+        No themes yet. Create one in the sidebar!
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="save-btn" (click)="confirmBulkThemeAssignment()" [disabled]="selectedBulkThemes.size === 0">Apply Themes</button>
+      <button class="cancel-btn" (click)="showBulkThemeModal = false">Cancel</button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,56 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo">
+      <h1><span class="red-letter">S</span>onic<span class="red-letter">V</span>ault</h1>
+      <p>Import, Rate, and Export Your Playlists</p>
+    </div>
+
+    <div class="login-content">
+      <p class="description">
+        Connect your YouTube Music account to get started. You'll be able to:
+      </p>
+      
+      <ul class="features">
+        <li>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+          </svg>
+          Import your playlists
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+          </svg>
+          Rate your songs from 1-10
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+          </svg>
+          Export filtered playlists back
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+          </svg>
+          Keep your ratings saved
+        </li>
+      </ul>
+
+      <button 
+        class="youtube-login-btn" 
+        (click)="loginWithYouTube()"
+        [disabled]="isLoading">
+        <span *ngIf="!isLoading">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+          </svg>
+          Sign in with YouTube Music
+        </span>
+        <span *ngIf="isLoading">Loading...</span>
+      </button>
+
+      <p class="error-message" *ngIf="errorMessage">{{ errorMessage }}</p>
+    </div>
+  </div>
+</div>

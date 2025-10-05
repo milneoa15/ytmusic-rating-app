@@ -1,0 +1,163 @@
+<div class="export-container">
+  <div class="header">
+    <h2>Export Playlist</h2>
+    <button class="back-btn" (click)="backToDashboard()">← Back to Dashboard</button>
+  </div>
+
+  <div class="content">
+    <!-- Rating Distribution -->
+    <div class="stats-section">
+      <h3>Rating Distribution</h3>
+      <div class="rating-bars">
+        <div *ngFor="let rating of [10,9,8,7,6,5,4,3,2,1]" class="rating-bar-item">
+          <span class="rating-number">{{ rating }}</span>
+          <div class="bar-container">
+            <div 
+              class="bar-fill" 
+              [style.width.%]="(ratingDistribution[rating] / songs.length) * 100"
+              [class.high]="rating >= 8"
+              [class.mid]="rating >= 5 && rating < 8"
+              [class.low]="rating < 5">
+            </div>
+            <span class="bar-count">{{ ratingDistribution[rating] }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Selection -->
+    <div class="filter-section">
+      <h3>Rating Filter</h3>
+      
+      <div class="preset-filters">
+        <button 
+          *ngFor="let preset of presetFilters"
+          class="preset-btn"
+          [class.active]="exportOptions.minRating === preset.min && exportOptions.maxRating === preset.max"
+          (click)="applyPresetFilter(preset)">
+          {{ preset.label }}
+        </button>
+      </div>
+
+      <div class="custom-range">
+        <h4>Or set custom range:</h4>
+        <div class="range-inputs">
+          <div class="input-group">
+            <label>Min Rating:</label>
+            <input 
+              type="number" 
+              [(ngModel)]="exportOptions.minRating"
+              (ngModelChange)="onFilterChange()"
+              min="0" 
+              max="10"
+              class="rating-input">
+          </div>
+          <span class="range-separator">to</span>
+          <div class="input-group">
+            <label>Max Rating:</label>
+            <input 
+              type="number" 
+              [(ngModel)]="exportOptions.maxRating"
+              (ngModelChange)="onFilterChange()"
+              min="0" 
+              max="10"
+              class="rating-input">
+          </div>
+        </div>
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="includeUnrated" (ngModelChange)="onFilterChange()">
+          Include unrated songs
+        </label>
+      </div>
+
+      <!-- Theme Filter -->
+      <div class="theme-filter" *ngIf="themes.length > 0">
+        <h4>Theme Filter (Optional)</h4>
+        <div class="theme-mode-toggle">
+          <button 
+            [class.active]="themeFilterMode === 'any'"
+            (click)="themeFilterMode = 'any'; onFilterChange()">
+            Match ANY theme
+          </button>
+          <button 
+            [class.active]="themeFilterMode === 'all'"
+            (click)="themeFilterMode = 'all'; onFilterChange()">
+            Match ALL themes
+          </button>
+        </div>
+        <div class="theme-list">
+          <button 
+            *ngFor="let theme of themes" 
+            class="theme-badge"
+            [class.selected]="selectedThemes.has(theme.id)"
+            [style.background-color]="theme.color"
+            (click)="toggleTheme(theme.id); onFilterChange()">
+            {{ theme.name }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtered Songs Preview -->
+    <div class="preview-section">
+      <h3>Songs to Export ({{ filteredSongs.length }})</h3>
+      
+      <div *ngIf="filteredSongs.length === 0" class="empty-message">
+        No songs match the selected rating range
+      </div>
+
+      <div class="songs-preview" *ngIf="filteredSongs.length > 0">
+        <div *ngFor="let song of filteredSongs" class="song-preview-item">
+          <img [src]="song.thumbnailUrl" [alt]="song.title">
+          <div class="song-info">
+            <div class="song-title">{{ song.title }}</div>
+            <div class="song-artist">{{ song.artist }}</div>
+          </div>
+          <span class="song-rating" *ngIf="song.rating">⭐ {{ song.rating }}</span>
+          <span class="song-rating unrated" *ngIf="!song.rating">Unrated</span>
+          <button class="remove-from-export-btn" (click)="excludeSongFromExport(song.id)" title="Remove from export">
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Options -->
+    <div class="export-options">
+      <h3>Playlist Details</h3>
+      
+      <div class="form-group">
+        <label>Playlist Name:</label>
+        <input 
+          type="text" 
+          [(ngModel)]="exportOptions.playlistName"
+          class="text-input"
+          placeholder="Enter playlist name">
+      </div>
+
+      <div class="form-group">
+        <label>Description (optional):</label>
+        <textarea 
+          [(ngModel)]="exportOptions.description"
+          class="text-input"
+          rows="3"
+          placeholder="Add a description for your playlist"></textarea>
+      </div>
+
+      <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+      <div *ngIf="exportSuccess" class="success">
+        ✓ Playlist exported successfully!
+      </div>
+
+      <button 
+        class="export-btn"
+        (click)="exportPlaylist()"
+        [disabled]="isExporting || filteredSongs.length === 0 || !exportOptions.playlistName">
+        <span *ngIf="!isExporting">
+          Export {{ filteredSongs.length }} Song{{ filteredSongs.length !== 1 ? 's' : '' }} to YouTube Music
+        </span>
+        <span *ngIf="isExporting">Exporting...</span>
+      </button>
+    </div>
+  </div>
+</div>
