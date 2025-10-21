@@ -39,7 +39,12 @@ button {
 
 button:disabled {
   opacity: 0.3;
-  cursor: not-allowed;
+  cursor: default;
+}
+
+body.dragging-queue-item,
+body.dragging-queue-item * {
+  cursor: grabbing !important;
 }
 
 input, textarea {

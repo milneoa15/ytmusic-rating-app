@@ -125,7 +125,7 @@
             &:disabled {
               background: var(--bg-elevated);
               color: var(--text-disabled);
-              cursor: not-allowed;
+              cursor: default;
             }
           }
         }
@@ -280,7 +280,7 @@
         &:disabled {
           background: var(--bg-elevated);
           color: var(--text-disabled);
-          cursor: not-allowed;
+          cursor: default;
         }
       }
     }

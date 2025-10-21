@@ -1,0 +1,44 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>Drag Test</title>
+  <style>
+    body.dragging * { cursor: grabbing !important; }
+  </style>
+</head>
+<body>
+  <div id='source' draggable='true' style='width:100px;height:100px;background:red;'>Drag me</div>
+  <div id='target' style='width:100px;height:100px;background:blue;margin-top:20px;'>Drop here</div>
+  <script>
+    const source = document.getElementById('source');
+    const target = document.getElementById('target');
+
+    source.addEventListener('dragstart', (event) => {
+      document.body.classList.add('dragging');
+      document.addEventListener('dragover', globalDragOver, true);
+    });
+
+    source.addEventListener('dragend', () => {
+      document.body.classList.remove('dragging');
+      document.removeEventListener('dragover', globalDragOver, true);
+    });
+
+    function globalDragOver(event) {
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+    }
+
+    target.addEventListener('dragover', (event) => {
+      event.preventDefault();
+    });
+
+    target.addEventListener('drop', (event) => {
+      event.preventDefault();
+      alert('Dropped!');
+    });
+  </script>
+</body>
+</html>

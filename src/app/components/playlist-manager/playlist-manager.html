@@ -24,7 +24,7 @@
   <div class="tab-content" *ngIf="activeTab === 'import'">
     <div *ngIf="!isImporting" class="playlists-section">
       <!-- Fixed Actions Bar -->
-      <div class="actions-bar">
+      <div class="actions-bar" *ngIf="youtubePlaylists.length > 0">
         <div class="bulk-actions">
           <button class="action-btn" (click)="selectAllYoutube()">Select All</button>
           <button class="action-btn" (click)="deselectAllYoutube()">Deselect All</button>
@@ -39,6 +39,13 @@
 
       <div *ngIf="isLoadingPlaylists && youtubePlaylists.length === 0" class="loading">
         Loading playlists...
+      </div>
+
+      <div
+        *ngIf="!isLoadingPlaylists && youtubePlaylists.length === 0 && !importErrorMessage"
+        class="empty-message">
+        <p>No playlists were found in your YouTube Music account.</p>
+        <p>If you expect to see playlists, try refreshing the page or signing out and back in.</p>
       </div>
 
       <div *ngIf="importErrorMessage" class="error">{{ importErrorMessage }}</div>
@@ -68,14 +75,22 @@
             </div>
 
             <div class="save-as-local-container">
-              <label class="save-as-local-label" (click)="$event.stopPropagation()">
+              <div
+                class="save-as-local-control"
+                (click)="$event.stopPropagation()">
                 <input
+                  [id]="'import-save-as-local-' + playlist.id"
                   type="checkbox"
                   [checked]="saveAsLocalPlaylistIds.has(playlist.id)"
                   (change)="toggleSaveAsLocalPlaylist(playlist.id)"
                   [disabled]="!isYoutubePlaylistSelected(playlist.id)">
-                <span>Save as local playlist</span>
-              </label>
+                <label
+                  class="save-as-local-label"
+                  [attr.for]="'import-save-as-local-' + playlist.id"
+                  [class.disabled]="!isYoutubePlaylistSelected(playlist.id)">
+                  Save as local playlist
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -98,6 +113,11 @@
     <div *ngIf="localPlaylists.length === 0" class="empty-state">
       <p>You haven't created any playlists yet.</p>
       <p>Go to the Library to create playlists!</p>
+      <p>Or import playlists you've already built on YouTube Music.</p>
+      <div class="empty-state-actions">
+        <button class="empty-state-btn" (click)="backToDashboard()">Open Library</button>
+        <button class="empty-state-btn secondary" (click)="switchTab('import')">Import from YouTube</button>
+      </div>
     </div>
 
     <!-- Playlists Section -->

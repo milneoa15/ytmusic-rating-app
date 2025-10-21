@@ -489,6 +489,9 @@ export class SongLibrary implements OnInit, OnDestroy {
   }
 
   goToImport(): void {
+    if (this.showPlaylistViewerModal) {
+      this.closePlaylistViewer();
+    }
     this.router.navigate(['/export'], {
       state: { tab: 'import' }
     });

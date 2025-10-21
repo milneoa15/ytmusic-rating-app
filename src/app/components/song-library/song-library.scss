@@ -1,4 +1,4 @@
-:host {
+﻿:host {
   display: block;
   --mini-player-height: 92px;
 }
@@ -136,7 +136,7 @@
 
     &:disabled {
       opacity: 0.5;
-      cursor: not-allowed;
+      cursor: default;
     }
 
     &.delete {
@@ -971,7 +971,7 @@
 
       &:disabled {
         color: var(--text-disabled);
-        cursor: not-allowed;
+        cursor: default;
         opacity: 0.5;
       }
 
@@ -1389,7 +1389,7 @@
 
     &:disabled {
       opacity: 0.3;
-      cursor: not-allowed;
+      cursor: default;
     }
   }
 }
@@ -1418,7 +1418,7 @@
 
       &:disabled {
         opacity: 0.5;
-        cursor: not-allowed;
+        cursor: default;
       }
     }
   }
@@ -1427,6 +1427,46 @@
 // Playlist Viewer Modal
 .playlist-viewer-modal {
   max-width: 600px;
+
+  .empty-message {
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: normal;
+    line-height: 1.6;
+
+    p {
+      margin: 0.5rem 0;
+    }
+
+    .empty-actions {
+      margin-top: 1.5rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .empty-action-btn {
+      background: var(--red-primary);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.75rem;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        background: var(--red-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(198, 40, 40, 0.28);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--red-hover);
+        outline-offset: 3px;
+      }
+    }
+  }
 
   .playlist-actions-header {
     display: flex;

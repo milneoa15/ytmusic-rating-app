@@ -99,7 +99,7 @@ export class PlaylistManager implements OnInit {
         this.isLoadingPlaylists = false;
       },
       error: (error: any) => {
-        this.importErrorMessage = 'Failed to load playlists';
+        this.importErrorMessage = 'Failed to load playlists. If you expect to see playlists, try refreshing the page or signing out and back in.';
         console.error('Error loading playlists:', error);
         this.isLoadingPlaylists = false;
       }

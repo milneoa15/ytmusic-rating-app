@@ -388,7 +388,10 @@
 
       <div *ngIf="playlists.length === 0" class="empty-message">
         <p>You haven't created any playlists yet.</p>
-        <p>Create one to organize your music!</p>
+        <p>Create one to organize your music or import playlists from YouTube Music.</p>
+        <div class="empty-actions">
+          <button class="empty-action-btn" (click)="goToImport()">Go to Import Tab</button>
+        </div>
       </div>
 
       <div class="playlists-list" *ngIf="playlists.length > 0">

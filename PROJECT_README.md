@@ -1,10 +1,10 @@
-# YouTube Music Rating App
+﻿# YouTube Music Rating App
 
 A comprehensive Angular web application that allows users to import YouTube Music playlists, rate songs from 1-10, and export filtered playlists back to their YouTube Music account.
 
-## ✨ Features
+## âœ¨ Features
 
-### 🎵 Core Functionality
+### ðŸŽµ Core Functionality
 - **Import Playlists**: Import your playlists from YouTube Music
 - **Rate Songs**: Rate each song on a scale of 1-10
   - 1 = Terrible
@@ -17,7 +17,7 @@ A comprehensive Angular web application that allows users to import YouTube Musi
   - Export only masterpieces (10)
   - Custom rating ranges
 
-### 📊 Additional Features
+### ðŸ“Š Additional Features
 - Rating distribution visualization
 - Progress tracking during rating sessions
 - Navigate back and forth between songs
@@ -25,7 +25,7 @@ A comprehensive Angular web application that allows users to import YouTube Musi
 - Edit existing ratings
 - Clean, modern, responsive UI
 
-## 🚀 Getting Started
+## ðŸš€ Getting Started
 
 The application is now running at **http://localhost:4200/**
 
@@ -36,33 +36,33 @@ The application is now running at **http://localhost:4200/**
 3. **Rate**: Rate each song from 1-10
 4. **Export**: Filter by rating and export back to YouTube Music
 
-## 📁 Project Structure
+## ðŸ“ Project Structure
 
 ```
 ytmusic-rating-app/
-├── src/
-│   ├── app/
-│   │   ├── components/
-│   │   │   ├── login/                 # Authentication component
-│   │   │   ├── dashboard/             # Main dashboard
-│   │   │   ├── playlist-import/       # Import playlists
-│   │   │   ├── song-rating/           # Rate songs interface
-│   │   │   └── playlist-export/       # Export filtered playlists
-│   │   ├── models/
-│   │   │   ├── user.model.ts          # User data structure
-│   │   │   ├── song.model.ts          # Song and rating structures
-│   │   │   └── playlist.model.ts      # Playlist structures
-│   │   ├── services/
-│   │   │   ├── auth.service.ts        # Authentication service
-│   │   │   ├── storage.service.ts     # Local storage for ratings
-│   │   │   └── youtube-music.service.ts # YouTube Music API integration
-│   │   ├── app.routes.ts              # Application routing
-│   │   └── app.ts                     # Root component
-│   └── styles.scss                    # Global styles
-└── README.md
+â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ app/
+â”‚   â”‚   â”œâ”€â”€ components/
+â”‚   â”‚   â”‚   â”œâ”€â”€ login/                 # Authentication component
+â”‚   â”‚   â”‚   â”œâ”€â”€ dashboard/             # Main dashboard
+â”‚   â”‚   â”‚   â”œâ”€â”€ playlist-manager/      # Combined playlist import/export
+â”‚   â”‚   â”‚   â”œâ”€â”€ song-rating/           # Rate songs interface
+â”‚   â”‚   â”‚   â””â”€â”€ playlist-export/       # Export filtered playlists
+â”‚   â”‚   â”œâ”€â”€ models/
+â”‚   â”‚   â”‚   â”œâ”€â”€ user.model.ts          # User data structure
+â”‚   â”‚   â”‚   â”œâ”€â”€ song.model.ts          # Song and rating structures
+â”‚   â”‚   â”‚   â””â”€â”€ playlist.model.ts      # Playlist structures
+â”‚   â”‚   â”œâ”€â”€ services/
+â”‚   â”‚   â”‚   â”œâ”€â”€ auth.service.ts        # Authentication service
+â”‚   â”‚   â”‚   â”œâ”€â”€ storage.service.ts     # Local storage for ratings
+â”‚   â”‚   â”‚   â””â”€â”€ youtube-music.service.ts # YouTube Music API integration
+â”‚   â”‚   â”œâ”€â”€ app.routes.ts              # Application routing
+â”‚   â”‚   â””â”€â”€ app.ts                     # Root component
+â”‚   â””â”€â”€ styles.scss                    # Global styles
+â””â”€â”€ README.md
 ```
 
-## 🔧 API Integration (Next Steps)
+## ðŸ”§ API Integration (Next Steps)
 
 The application is structured with placeholder methods for YouTube Music API integration. To connect to the real YouTube Music API:
 
@@ -89,7 +89,7 @@ Replace mock methods with actual API calls:
 4. Configure authorized redirect URIs
 5. Implement proper error handling
 
-## 💾 Data Storage
+## ðŸ’¾ Data Storage
 
 Currently uses **localStorage** for ratings:
 
@@ -113,7 +113,7 @@ Currently uses **localStorage** for ratings:
 - Implement proper user authentication
 - Enable cloud sync across devices
 
-## 🛠️ Technology Stack
+## ðŸ› ï¸ Technology Stack
 
 - **Framework**: Angular 20+
 - **Language**: TypeScript
@@ -122,7 +122,7 @@ Currently uses **localStorage** for ratings:
 - **Storage**: LocalStorage (upgradeable to backend)
 - **Routing**: Angular Router
 
-## 📱 UI/UX Features
+## ðŸ“± UI/UX Features
 
 - Modern gradient design (purple/blue theme)
 - Fully responsive (mobile-friendly)
@@ -132,7 +132,7 @@ Currently uses **localStorage** for ratings:
 - Progress tracking
 - Rating distribution charts
 
-## 🎨 Components Overview
+## ðŸŽ¨ Components Overview
 
 ### Login Component
 - YouTube Music authentication
@@ -158,7 +158,7 @@ Currently uses **localStorage** for ratings:
 - 1-10 rating buttons with hover effects
 - Progress bar
 - Navigation (previous/next/skip)
-- Rating labels (Terrible → Masterpiece)
+- Rating labels (Terrible â†’ Masterpiece)
 
 ### Playlist Export
 - Rating distribution bar chart
@@ -168,7 +168,7 @@ Currently uses **localStorage** for ratings:
 - Playlist naming and description
 - Export confirmation
 
-## 🚦 Development Commands
+## ðŸš¦ Development Commands
 
 ```bash
 # Start development server
@@ -184,14 +184,14 @@ ng test
 ng lint
 ```
 
-## 📝 Notes
+## ðŸ“ Notes
 
 - Currently using mock data for development
 - All ratings stored in browser localStorage
 - Clearing browser data will erase ratings
 - Ready for YouTube Music API integration
 
-## 🔮 Future Enhancements
+## ðŸ”® Future Enhancements
 
 - [ ] YouTube Music API integration
 - [ ] Backend API implementation
@@ -206,7 +206,7 @@ ng lint
 - [ ] Spotify integration
 - [ ] Apple Music integration
 
-## 📄 License
+## ðŸ“„ License
 
 Custom application - modify as needed for your use case.
 
@@ -216,7 +216,7 @@ Custom application - modify as needed for your use case.
 **Version**: 1.0.0  
 **Last Updated**: October 2025
 
-## 🆘 Support
+## ðŸ†˜ Support
 
 When integrating the YouTube Music API:
 1. Visit [Google Cloud Console](https://console.cloud.google.com/)

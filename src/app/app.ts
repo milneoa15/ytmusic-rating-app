@@ -320,9 +320,43 @@ export class App implements OnInit, OnDestroy {
   dragOverIndex: number | null = null;
   dropPosition: 'before' | 'after' = 'after';
   private autoScrollInterval: any = null;
+  private globalDragOverHandler = (event: DragEvent) => {
+    if (this.draggedIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  };
+  private globalDragEnterHandler = (event: DragEvent) => {
+    if (this.draggedIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  };
+  private globalDropHandler = (event: DragEvent) => {
+    if (this.draggedIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  };
 
   onDragStart(event: DragEvent, index: number): void {
     this.draggedIndex = index;
+    document.body.classList.add('dragging-queue-item');
+    document.addEventListener('dragover', this.globalDragOverHandler, true);
+    document.addEventListener('dragenter', this.globalDragEnterHandler, true);
+    document.addEventListener('drop', this.globalDropHandler, true);
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', index.toString());
@@ -334,6 +368,10 @@ export class App implements OnInit, OnDestroy {
     this.dragOverIndex = null;
     this.dropPosition = 'after';
     this.stopAutoScroll();
+    document.body.classList.remove('dragging-queue-item');
+    document.removeEventListener('dragover', this.globalDragOverHandler, true);
+    document.removeEventListener('dragenter', this.globalDragEnterHandler, true);
+    document.removeEventListener('drop', this.globalDropHandler, true);
   }
 
   onDragOver(event: DragEvent, index: number): void {
@@ -369,6 +407,10 @@ export class App implements OnInit, OnDestroy {
   onDrop(event: DragEvent, dropIndex: number): void {
     event.preventDefault();
     event.stopPropagation();
+    document.body.classList.remove('dragging-queue-item');
+    document.removeEventListener('dragover', this.globalDragOverHandler, true);
+    document.removeEventListener('dragenter', this.globalDragEnterHandler, true);
+    document.removeEventListener('drop', this.globalDropHandler, true);
 
     if (this.draggedIndex !== null) {
       let targetIndex = dropIndex;
@@ -442,6 +484,10 @@ export class App implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopProgressTimer();
     this.stopAutoScroll();
+    document.body.classList.remove('dragging-queue-item');
+    document.removeEventListener('dragover', this.globalDragOverHandler, true);
+    document.removeEventListener('dragenter', this.globalDragEnterHandler, true);
+    document.removeEventListener('drop', this.globalDropHandler, true);
     try { this.ytPlayer?.destroy(); } catch {}
     this.playerStateSubscription?.unsubscribe();
     this.navigationSubscription?.unsubscribe();
