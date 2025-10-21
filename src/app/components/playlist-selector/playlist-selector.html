@@ -1,0 +1,65 @@
+<div class="modal-overlay" *ngIf="isVisible" (click)="close()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Add to Playlist</h3>
+      <button class="close-btn" (click)="close()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="create-section">
+        <button class="create-new-btn" (click)="toggleCreateForm()">
+          {{ showCreateForm ? 'Cancel' : '+ Create New Playlist' }}
+        </button>
+
+        <div class="create-form" *ngIf="showCreateForm">
+          <input
+            type="text"
+            [(ngModel)]="newPlaylistName"
+            placeholder="Enter playlist name"
+            class="text-input"
+            (keyup.enter)="createPlaylist()">
+          <button
+            class="save-btn"
+            (click)="createPlaylist()"
+            [disabled]="!newPlaylistName.trim()">
+            Create
+          </button>
+        </div>
+      </div>
+
+      <div class="playlists-list" *ngIf="playlists.length > 0">
+        <h4>Select Playlists:</h4>
+        <div
+          *ngFor="let playlist of playlists"
+          class="playlist-item"
+          [class.selected]="selectedPlaylistIds.has(playlist.id)"
+          (click)="togglePlaylist(playlist.id)">
+          <div class="checkbox">
+            <input
+              type="checkbox"
+              [checked]="selectedPlaylistIds.has(playlist.id)"
+              (click)="$event.stopPropagation()">
+          </div>
+          <div class="playlist-info">
+            <div class="playlist-name">{{ playlist.name }}</div>
+            <div class="playlist-count">{{ playlist.songIds.length }} songs</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-message" *ngIf="playlists.length === 0">
+        <p>No playlists yet. Create one to get started!</p>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="cancel-btn" (click)="close()">Cancel</button>
+      <button
+        class="confirm-btn"
+        (click)="addToPlaylists()"
+        [disabled]="selectedPlaylistIds.size === 0">
+        Add to {{ selectedPlaylistIds.size }} Playlist{{ selectedPlaylistIds.size !== 1 ? 's' : '' }}
+      </button>
+    </div>
+  </div>
+</div>

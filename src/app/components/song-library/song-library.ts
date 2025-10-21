@@ -1,23 +1,31 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Song, SongWithMetadata } from '../../models/song.model';
 import { Theme } from '../../models/theme.model';
+import { LocalPlaylist, PlaylistFilters } from '../../models/playlist.model';
 import { StorageService } from '../../services/storage.service';
 import { AuthService } from '../../services/auth.service';
 import { ModalService } from '../../services/modal.service';
+import { MusicPlayerService } from '../../services/music-player.service';
+import { PlaylistSelector } from '../playlist-selector/playlist-selector';
 
 type SortOption = 'title' | 'artist' | 'rating' | 'recent';
+type CreatePlaylistMode = 'simple' | 'advanced';
 
 @Component({
   selector: 'app-song-library',
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './song-library.html',
-  styleUrl: './song-library.scss'
+  styleUrl: './song-library.scss',
+  host: {
+    '(document:click)': 'onDocumentClick($event)'
+  }
 })
-export class SongLibrary implements OnInit {
+
+export class SongLibrary implements OnInit, OnDestroy {
   allSongs: SongWithMetadata[] = [];
   filteredSongs: SongWithMetadata[] = [];
   themes: Theme[] = [];
@@ -52,16 +60,96 @@ export class SongLibrary implements OnInit {
   selectMode: boolean = false;
   selectedSongs: Set<string> = new Set();
 
+  // Playlist viewing
+  showPlaylistViewerModal: boolean = false;
+  playlists: LocalPlaylist[] = [];
+  currentPlaylist: LocalPlaylist | null = null;
+
+  // Create playlist modal
+  showCreatePlaylistModal: boolean = false;
+  createMode: CreatePlaylistMode = 'simple';
+  newPlaylistName: string = '';
+  newPlaylistDescription: string = '';
+  newPlaylistFilters: PlaylistFilters = {
+    minRating: 0,
+    maxRating: 10,
+    includeUnrated: true,
+    themeIds: [],
+    themeFilterMode: 'any',
+    artistIds: [],
+    artistFilterMode: 'any'
+  };
+
+  // Edit playlist modal
+  showEditPlaylistModal: boolean = false;
+  editPlaylistFilters: PlaylistFilters = {
+    minRating: 0,
+    maxRating: 10,
+    includeUnrated: true,
+    themeIds: [],
+    themeFilterMode: 'any',
+    artistIds: [],
+    artistFilterMode: 'any'
+  };
+
+  // Edit playlist name/description modal
+  showEditPlaylistInfoModal: boolean = false;
+  editPlaylistName: string = '';
+  editPlaylistDescription: string = '';
+  editPlaylistInfoTab: 'info' | 'filters' = 'info';
+
   constructor(
     private storageService: StorageService,
     private authService: AuthService,
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private modalService: ModalService
+    private modalService: ModalService,
+    private musicPlayerService: MusicPlayerService
   ) {}
+
+  // Back to top button
+  showBackToTop: boolean = false;
 
   ngOnInit(): void {
     this.loadLibrary();
+
+    // Add scroll listener for back-to-top button
+    window.addEventListener('scroll', this.handleScroll.bind(this));
+  }
+
+  ngOnDestroy(): void {
+    // Restore body overflow when component is destroyed (in case a modal was open)
+    document.body.style.overflow = '';
+
+    // Remove scroll listener
+    window.removeEventListener('scroll', this.handleScroll.bind(this));
+  }
+
+  handleScroll(): void {
+    this.showBackToTop = window.scrollY > 300;
+  }
+
+  scrollToTop(): void {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }
+
+  // Playback controls
+  playSong(song: SongWithMetadata): void {
+    if (this.selectMode) return;
+
+    // Update the music player service with the new song and queue
+    this.musicPlayerService.playSong(song, this.filteredSongs);
+  }
+
+  get playingSongId(): string | null {
+    return this.musicPlayerService.currentState.currentSong?.id || null;
+  }
+
+  get miniPlayerVisible(): boolean {
+    return this.musicPlayerService.currentState.miniPlayerVisible;
   }
 
   loadLibrary(): void {
@@ -73,12 +161,12 @@ export class SongLibrary implements OnInit {
 
     // Load all imported songs
     const songs = this.storageService.getImportedSongs(userId);
-    
+
     // Enrich songs with ratings and themes
     this.allSongs = songs.map(song => {
       const rating = this.storageService.getRating(userId, song.id);
       const themeIds = this.storageService.getSongThemes(userId, song.id);
-      
+
       return {
         ...song,
         rating: rating?.rating,
@@ -88,7 +176,10 @@ export class SongLibrary implements OnInit {
 
     // Load themes
     this.themes = this.storageService.getThemes(userId);
-    
+
+    // Load playlists
+    this.playlists = this.storageService.getLocalPlaylists(userId);
+
     // Apply filters
     this.applyFilters();
   }
@@ -96,6 +187,18 @@ export class SongLibrary implements OnInit {
   get uniqueArtists(): string[] {
     const artists = new Set(this.allSongs.map(s => s.artist));
     return Array.from(artists).sort();
+  }
+
+  get artistSongCounts(): Map<string, number> {
+    const counts = new Map<string, number>();
+    this.allSongs.forEach(song => {
+      counts.set(song.artist, (counts.get(song.artist) || 0) + 1);
+    });
+    return counts;
+  }
+
+  getArtistSongCount(artist: string): number {
+    return this.artistSongCounts.get(artist) || 0;
   }
 
   get filteredArtists(): string[] {
@@ -127,7 +230,16 @@ export class SongLibrary implements OnInit {
   }
 
   applyFilters(): void {
-    this.filteredSongs = this.allSongs.filter(song => {
+    // Start with all songs or playlist songs
+    let songsToFilter = this.allSongs;
+
+    // If viewing a specific playlist, start with only those songs
+    if (this.currentPlaylist) {
+      const playlistSongIds = new Set(this.currentPlaylist.songIds);
+      songsToFilter = this.allSongs.filter(song => playlistSongIds.has(song.id));
+    }
+
+    this.filteredSongs = songsToFilter.filter(song => {
       // Artist filter
       if (this.selectedArtists.size > 0 && !this.selectedArtists.has(song.artist)) {
         return false;
@@ -151,7 +263,7 @@ export class SongLibrary implements OnInit {
       // Search query
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase();
-        return song.title.toLowerCase().includes(query) || 
+        return song.title.toLowerCase().includes(query) ||
                song.artist.toLowerCase().includes(query);
       }
 
@@ -183,6 +295,20 @@ export class SongLibrary implements OnInit {
 
       return this.sortAscending ? comparison : -comparison;
     });
+  }
+
+  shuffleSongs(): void {
+    if (this.filteredSongs.length === 0) return;
+
+    // Fisher-Yates shuffle algorithm - create shuffled copy
+    const shuffled = [...this.filteredSongs];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    // Start playing the first song from the shuffled list
+    this.musicPlayerService.playSong(shuffled[0], shuffled);
   }
 
   changeSorting(option: SortOption): void {
@@ -231,6 +357,7 @@ export class SongLibrary implements OnInit {
       this.newThemeColor = '#c62828';
     }
     this.showThemeModal = true;
+    document.body.style.overflow = 'hidden';
   }
 
   closeThemeModal(): void {
@@ -238,6 +365,7 @@ export class SongLibrary implements OnInit {
     this.editingTheme = null;
     this.newThemeName = '';
     this.newThemeColor = '#c62828';
+    document.body.style.overflow = '';
   }
 
   saveTheme(): void {
@@ -276,10 +404,12 @@ export class SongLibrary implements OnInit {
   // Song-Theme Assignment
   openThemeAssignment(song: Song): void {
     this.assigningThemesForSong = song;
+    document.body.style.overflow = 'hidden';
   }
 
   closeThemeAssignment(): void {
     this.assigningThemesForSong = null;
+    document.body.style.overflow = '';
   }
 
   toggleSongTheme(song: SongWithMetadata, themeId: string): void {
@@ -353,14 +483,312 @@ export class SongLibrary implements OnInit {
     });
   }
 
-  goToExport(): void {
+  goToPlaylists(): void {
+    this.showPlaylistViewerModal = true;
+    document.body.style.overflow = 'hidden';
+  }
+
+  goToImport(): void {
     this.router.navigate(['/export'], {
-      state: { songs: this.filteredSongs }
+      state: { tab: 'import' }
     });
   }
 
-  backToDashboard(): void {
-    this.router.navigate(['/dashboard']);
+  // Playlist Management
+  closePlaylistViewer(): void {
+    this.showPlaylistViewerModal = false;
+    document.body.style.overflow = '';
+  }
+
+  viewPlaylist(playlist: LocalPlaylist): void {
+    this.currentPlaylist = playlist;
+    this.showPlaylistViewerModal = false;
+    document.body.style.overflow = '';
+    this.applyFilters();
+  }
+
+  clearPlaylistView(): void {
+    this.currentPlaylist = null;
+    this.applyFilters();
+  }
+
+  openCreatePlaylistModal(mode: CreatePlaylistMode = 'simple'): void {
+    this.createMode = mode;
+    this.newPlaylistName = '';
+    this.newPlaylistDescription = '';
+    this.newPlaylistFilters = {
+      minRating: 0,
+      maxRating: 10,
+      includeUnrated: true,
+      themeIds: [],
+      themeFilterMode: 'any',
+      artistIds: [],
+      artistFilterMode: 'any'
+    };
+    this.showCreatePlaylistModal = true;
+    this.showPlaylistViewerModal = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeCreatePlaylistModal(): void {
+    this.showCreatePlaylistModal = false;
+    document.body.style.overflow = '';
+  }
+
+  togglePlaylistFilterTheme(themeId: string): void {
+    const index = this.newPlaylistFilters.themeIds?.indexOf(themeId) ?? -1;
+    if (index > -1) {
+      this.newPlaylistFilters.themeIds?.splice(index, 1);
+    } else {
+      this.newPlaylistFilters.themeIds?.push(themeId);
+    }
+  }
+
+  togglePlaylistFilterArtist(artist: string): void {
+    const index = this.newPlaylistFilters.artistIds?.indexOf(artist) ?? -1;
+    if (index > -1) {
+      this.newPlaylistFilters.artistIds?.splice(index, 1);
+    } else {
+      this.newPlaylistFilters.artistIds?.push(artist);
+    }
+  }
+
+  get createPlaylistFilteredSongs(): SongWithMetadata[] {
+    if (this.createMode === 'simple') {
+      return this.filteredSongs; // Use currently filtered songs
+    }
+
+    // Advanced mode - use filter criteria
+    const filters = this.newPlaylistFilters;
+    return this.allSongs.filter(song => {
+      // Rating filter
+      if (song.rating === undefined) {
+        if (!filters.includeUnrated) return false;
+      } else {
+        if (filters.minRating && filters.minRating > 0 && song.rating < filters.minRating) return false;
+        if (filters.maxRating && song.rating > filters.maxRating) return false;
+      }
+
+      // Theme filter
+      if (filters.themeIds && filters.themeIds.length > 0) {
+        const songThemes = song.themes || [];
+        if (filters.themeFilterMode === 'any') {
+          const hasAnyTheme = filters.themeIds.some(themeId => songThemes.includes(themeId));
+          if (!hasAnyTheme) return false;
+        } else {
+          const hasAllThemes = filters.themeIds.every(themeId => songThemes.includes(themeId));
+          if (!hasAllThemes) return false;
+        }
+      }
+
+      // Artist filter
+      if (filters.artistIds && filters.artistIds.length > 0) {
+        if (filters.artistFilterMode === 'any') {
+          const hasAnyArtist = filters.artistIds.includes(song.artist);
+          if (!hasAnyArtist) return false;
+        } else {
+          // For 'all' mode, song must match all artists (which only makes sense if there's one artist)
+          // In practice, a song has one artist, so 'all' mode means the song's artist must be in the list
+          const hasAllArtists = filters.artistIds.includes(song.artist);
+          if (!hasAllArtists) return false;
+        }
+      }
+
+      return true;
+    });
+  }
+
+  createPlaylist(): void {
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId || !this.newPlaylistName.trim()) return;
+
+    const songIds = this.createMode === 'simple' ? [] : this.createPlaylistFilteredSongs.map(s => s.id);
+
+    // Only show error for advanced mode when no songs match
+    if (this.createMode === 'advanced' && songIds.length === 0) {
+      this.modalService.alert('Empty Playlist', 'No songs match the selected criteria.');
+      return;
+    }
+
+    const playlist = this.storageService.createLocalPlaylist(
+      userId,
+      this.newPlaylistName.trim(),
+      this.newPlaylistDescription.trim() || undefined,
+      this.createMode === 'advanced' ? this.newPlaylistFilters : undefined
+    );
+
+    if (songIds.length > 0) {
+      this.storageService.addSongsToLocalPlaylist(userId, playlist.id, songIds);
+    }
+
+    this.loadLibrary();
+    this.closeCreatePlaylistModal();
+
+    const message = songIds.length > 0
+      ? `Created playlist "${playlist.name}" with ${songIds.length} song${songIds.length > 1 ? 's' : ''}!`
+      : `Created empty playlist "${playlist.name}"!`;
+    this.modalService.alert('Success', message);
+  }
+
+  openEditPlaylistModal(): void {
+    if (!this.currentPlaylist) return;
+    // Reset filters when opening
+    this.editPlaylistFilters = {
+      minRating: 0,
+      maxRating: 10,
+      includeUnrated: true,
+      themeIds: [],
+      themeFilterMode: 'any',
+      artistIds: [],
+      artistFilterMode: 'any'
+    };
+    this.showEditPlaylistModal = true;
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeEditPlaylistModal(): void {
+    this.showEditPlaylistModal = false;
+    document.body.style.overflow = '';
+  }
+
+  toggleEditPlaylistFilterTheme(themeId: string): void {
+    const index = this.editPlaylistFilters.themeIds?.indexOf(themeId) ?? -1;
+    if (index > -1) {
+      this.editPlaylistFilters.themeIds?.splice(index, 1);
+    } else {
+      this.editPlaylistFilters.themeIds?.push(themeId);
+    }
+  }
+
+  toggleEditPlaylistFilterArtist(artist: string): void {
+    const index = this.editPlaylistFilters.artistIds?.indexOf(artist) ?? -1;
+    if (index > -1) {
+      this.editPlaylistFilters.artistIds?.splice(index, 1);
+    } else {
+      this.editPlaylistFilters.artistIds?.push(artist);
+    }
+  }
+
+  get editPlaylistFilteredSongs(): SongWithMetadata[] {
+    const filters = this.editPlaylistFilters;
+    return this.allSongs.filter(song => {
+      // Rating filter
+      if (song.rating === undefined) {
+        if (!filters.includeUnrated) return false;
+      } else {
+        if (filters.minRating && filters.minRating > 0 && song.rating < filters.minRating) return false;
+        if (filters.maxRating && song.rating > filters.maxRating) return false;
+      }
+
+      // Theme filter
+      if (filters.themeIds && filters.themeIds.length > 0) {
+        const songThemes = song.themes || [];
+        if (filters.themeFilterMode === 'any') {
+          const hasAnyTheme = filters.themeIds.some(themeId => songThemes.includes(themeId));
+          if (!hasAnyTheme) return false;
+        } else {
+          const hasAllThemes = filters.themeIds.every(themeId => songThemes.includes(themeId));
+          if (!hasAllThemes) return false;
+        }
+      }
+
+      // Artist filter
+      if (filters.artistIds && filters.artistIds.length > 0) {
+        if (filters.artistFilterMode === 'any') {
+          const hasAnyArtist = filters.artistIds.includes(song.artist);
+          if (!hasAnyArtist) return false;
+        } else {
+          // For 'all' mode, song must match all artists (which only makes sense if there's one artist)
+          // In practice, a song has one artist, so 'all' mode means the song's artist must be in the list
+          const hasAllArtists = filters.artistIds.includes(song.artist);
+          if (!hasAllArtists) return false;
+        }
+      }
+
+      return true;
+    });
+  }
+
+  get editPlaylistNewSongsCount(): number {
+    if (!this.currentPlaylist) return 0;
+    const playlistSongIds = new Set(this.currentPlaylist.songIds);
+    return this.editPlaylistFilteredSongs.filter(song => !playlistSongIds.has(song.id)).length;
+  }
+
+  async addFilteredSongsToPlaylist(): Promise<void> {
+    if (!this.currentPlaylist) return;
+
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId) return;
+
+    // Get filtered songs from edit modal that aren't already in the playlist
+    const playlistSongIds = new Set(this.currentPlaylist.songIds);
+    const newSongs = this.editPlaylistFilteredSongs.filter(song => !playlistSongIds.has(song.id));
+
+    if (newSongs.length === 0) {
+      await this.modalService.alert('No New Songs', 'All filtered songs are already in this playlist or no songs match the filters.');
+      return;
+    }
+
+    const confirmed = await this.modalService.confirm(
+      'Add Songs',
+      `Add ${newSongs.length} song${newSongs.length > 1 ? 's' : ''} to "${this.currentPlaylist.name}"?`
+    );
+
+    if (!confirmed) return;
+
+    const newSongIds = newSongs.map(s => s.id);
+    this.storageService.addSongsToLocalPlaylist(userId, this.currentPlaylist.id, newSongIds);
+
+    // Reload playlist
+    const updatedPlaylist = this.storageService.getLocalPlaylist(userId, this.currentPlaylist.id);
+    if (updatedPlaylist) {
+      this.currentPlaylist = updatedPlaylist;
+    }
+
+    this.loadLibrary();
+    this.closeEditPlaylistModal();
+    await this.modalService.alert('Success', `Added ${newSongs.length} song${newSongs.length > 1 ? 's' : ''} to the playlist!`);
+  }
+
+  async deletePlaylistFromViewer(playlist: LocalPlaylist): Promise<void> {
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId) return;
+
+    const confirmed = await this.modalService.confirm(
+      'Delete Playlist',
+      `Delete playlist "${playlist.name}"? This will remove the playlist but not the songs from your library.`,
+      'Delete',
+      'Cancel'
+    );
+
+    if (!confirmed) return;
+
+    this.storageService.deleteLocalPlaylist(userId, playlist.id);
+
+    // If we're currently viewing this playlist, clear the view
+    if (this.currentPlaylist?.id === playlist.id) {
+      this.currentPlaylist = null;
+    }
+
+    this.loadLibrary();
+  }
+
+  togglePlaylistStar(playlist: LocalPlaylist): void {
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId) return;
+
+    this.storageService.togglePlaylistStarred(userId, playlist.id);
+    this.loadLibrary();
+  }
+
+  goToExportPage(): void {
+    this.router.navigate(['/playlists']);
+  }
+
+  logout(): void {
+    this.authService.logout();
+    this.router.navigate(['/login']);
   }
 
   async deleteSong(song: Song): Promise<void> {
@@ -438,6 +866,12 @@ export class SongLibrary implements OnInit {
     if (this.selectedSongs.size === 0) return;
     this.bulkRating = 5;
     this.showBulkRatingModal = true;
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeBulkRatingModal(): void {
+    this.showBulkRatingModal = false;
+    document.body.style.overflow = '';
   }
 
   async confirmBulkRate(): Promise<void> {
@@ -460,6 +894,7 @@ export class SongLibrary implements OnInit {
     });
 
     this.showBulkRatingModal = false;
+    document.body.style.overflow = '';
     this.applyFilters();
   }
 
@@ -476,6 +911,7 @@ export class SongLibrary implements OnInit {
     });
 
     this.showBulkRatingModal = false;
+    document.body.style.overflow = '';
     this.applyFilters();
   }
 
@@ -486,6 +922,12 @@ export class SongLibrary implements OnInit {
     if (this.selectedSongs.size === 0) return;
     this.selectedBulkThemes.clear();
     this.showBulkThemeModal = true;
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeBulkThemeModal(): void {
+    this.showBulkThemeModal = false;
+    document.body.style.overflow = '';
   }
 
   toggleBulkTheme(themeId: string): void {
@@ -498,7 +940,7 @@ export class SongLibrary implements OnInit {
 
   confirmBulkThemeAssignment(): void {
     if (this.selectedBulkThemes.size === 0) return;
-    
+
     const userId = this.authService.currentUserValue?.id;
     if (!userId) return;
 
@@ -507,21 +949,136 @@ export class SongLibrary implements OnInit {
       if (song) {
         const currentThemes = song.themes || [];
         const newThemes = [...currentThemes];
-        
+
         this.selectedBulkThemes.forEach(themeId => {
           if (!newThemes.includes(themeId)) {
             this.storageService.assignThemeToSong(userId, songId, themeId);
             newThemes.push(themeId);
           }
         });
-        
+
         song.themes = newThemes;
       }
     });
 
     this.showBulkThemeModal = false;
+    document.body.style.overflow = '';
     this.selectedBulkThemes.clear();
     this.applyFilters();
+  }
+
+  // 3-dots menu state
+  openMenuForSong: string | null = null;
+
+  toggleSongMenu(songId: string, event: Event): void {
+    event.stopPropagation();
+    this.openMenuForSong = this.openMenuForSong === songId ? null : songId;
+  }
+
+  closeSongMenu(): void {
+    this.openMenuForSong = null;
+  }
+
+  onDocumentClick(event: Event): void {
+    // Close menu when clicking anywhere outside
+    if (this.openMenuForSong) {
+      const target = event.target as HTMLElement;
+      const menuContainer = target.closest('.song-menu-container');
+
+      // Only close if click is outside the menu container
+      if (!menuContainer) {
+        this.closeSongMenu();
+      }
+    }
+  }
+
+  addSongToQueue(song: SongWithMetadata, event: Event): void {
+    event.stopPropagation();
+    this.musicPlayerService.addToQueue(song);
+    this.closeSongMenu();
+  }
+
+  playSongNext(song: SongWithMetadata, event: Event): void {
+    event.stopPropagation();
+    this.musicPlayerService.addToPlayNext(song);
+    this.closeSongMenu();
+  }
+
+  // Add to playlist functionality
+  async addSongToPlaylist(song: Song): Promise<void> {
+    try {
+      const playlists = await PlaylistSelector.show([song.id]);
+      if (playlists.length > 0) {
+        this.loadLibrary(); // Refresh to show updated playlist
+        await this.modalService.alert(
+          'Success',
+          `Added "${song.title}" to ${playlists.length} playlist${playlists.length > 1 ? 's' : ''}`
+        );
+      }
+    } catch {
+      // User cancelled
+    }
+  }
+
+  async addSelectedToPlaylist(): Promise<void> {
+    if (this.selectedSongs.size === 0) return;
+
+    try {
+      const songIds = Array.from(this.selectedSongs);
+      const playlists = await PlaylistSelector.show(songIds);
+      if (playlists.length > 0) {
+        this.loadLibrary(); // Refresh to show updated playlists
+        await this.modalService.alert(
+          'Success',
+          `Added ${songIds.length} song${songIds.length > 1 ? 's' : ''} to ${playlists.length} playlist${playlists.length > 1 ? 's' : ''}`
+        );
+        this.selectedSongs.clear();
+        this.selectMode = false;
+      }
+    } catch {
+      // User cancelled
+    }
+  }
+
+  // Edit playlist info (name & description)
+  openEditPlaylistInfoModal(playlist: LocalPlaylist): void {
+    this.currentPlaylist = playlist;
+    this.editPlaylistName = playlist.name;
+    this.editPlaylistDescription = playlist.description || '';
+    this.editPlaylistInfoTab = 'info';
+    // Initialize filters for the second tab
+    this.editPlaylistFilters = {
+      minRating: 0,
+      maxRating: 10,
+      includeUnrated: true,
+      themeIds: [],
+      themeFilterMode: 'any',
+      artistIds: [],
+      artistFilterMode: 'any'
+    };
+    this.showEditPlaylistInfoModal = true;
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeEditPlaylistInfoModal(): void {
+    this.showEditPlaylistInfoModal = false;
+    document.body.style.overflow = '';
+  }
+
+  async savePlaylistInfo(): Promise<void> {
+    if (!this.currentPlaylist || !this.editPlaylistName.trim()) return;
+
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId) return;
+
+    this.storageService.updateLocalPlaylist(userId, this.currentPlaylist.id, {
+      name: this.editPlaylistName.trim(),
+      description: this.editPlaylistDescription.trim() || undefined
+    });
+
+    this.loadLibrary();
+    this.closeEditPlaylistInfoModal();
+    await this.modalService.alert('Success', 'Playlist updated successfully!');
   }
 }
 

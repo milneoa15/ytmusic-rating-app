@@ -1,0 +1,169 @@
+<div class="playlist-manager-page">
+  <div class="page-header">
+    <h2>Playlist Manager</h2>
+    <button class="back-btn" (click)="backToDashboard()">← Back to Library</button>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'import'"
+      (click)="switchTab('import')">
+      Import from YouTube
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'export'"
+      (click)="switchTab('export')">
+      Export to YouTube
+    </button>
+  </div>
+
+  <!-- Import Tab Content -->
+  <div class="tab-content" *ngIf="activeTab === 'import'">
+    <div *ngIf="!isImporting" class="playlists-section">
+      <!-- Fixed Actions Bar -->
+      <div class="actions-bar">
+        <div class="bulk-actions">
+          <button class="action-btn" (click)="selectAllYoutube()">Select All</button>
+          <button class="action-btn" (click)="deselectAllYoutube()">Deselect All</button>
+        </div>
+        <button
+          class="import-btn"
+          (click)="importSelectedPlaylists()"
+          [disabled]="selectedYoutubePlaylistIds.size === 0 || isLoadingPlaylists">
+          {{ isLoadingPlaylists ? 'Loading...' : `Import ${selectedYoutubePlaylistIds.size || ''} Selected` }}
+        </button>
+      </div>
+
+      <div *ngIf="isLoadingPlaylists && youtubePlaylists.length === 0" class="loading">
+        Loading playlists...
+      </div>
+
+      <div *ngIf="importErrorMessage" class="error">{{ importErrorMessage }}</div>
+
+      <!-- Scrollable Playlists List -->
+      <div class="playlists-list" *ngIf="youtubePlaylists.length > 0">
+        <div
+          *ngFor="let playlist of youtubePlaylists"
+          class="playlist-card"
+          [class.selected]="isYoutubePlaylistSelected(playlist.id)"
+          (click)="!isLoadingPlaylists && toggleYoutubePlaylistSelection(playlist.id)">
+
+          <input
+            type="checkbox"
+            class="playlist-checkbox"
+            [checked]="isYoutubePlaylistSelected(playlist.id)"
+            (change)="toggleYoutubePlaylistSelection(playlist.id)"
+            [disabled]="isLoadingPlaylists"
+            (click)="$event.stopPropagation()">
+
+          <div class="playlist-info">
+            <div class="playlist-header">
+              <h3>{{ playlist.title }}</h3>
+              <div class="playlist-meta">
+                <span class="song-count">{{ playlist.songCount }} songs</span>
+              </div>
+            </div>
+
+            <div class="save-as-local-container">
+              <label class="save-as-local-label" (click)="$event.stopPropagation()">
+                <input
+                  type="checkbox"
+                  [checked]="saveAsLocalPlaylistIds.has(playlist.id)"
+                  (change)="toggleSaveAsLocalPlaylist(playlist.id)"
+                  [disabled]="!isYoutubePlaylistSelected(playlist.id)">
+                <span>Save as local playlist</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="isImporting" class="importing-section">
+      <h3>Importing Playlists...</h3>
+      <div class="progress-container">
+        <div class="progress-bar" [style.width.%]="importProgress"></div>
+      </div>
+      <p class="progress-text">{{ importProgress }}% complete</p>
+      <p class="current-playlist">{{ currentlyImportingPlaylist }}</p>
+    </div>
+  </div>
+
+  <!-- Export Tab Content -->
+  <div class="tab-content" *ngIf="activeTab === 'export'">
+    <!-- Empty State -->
+    <div *ngIf="localPlaylists.length === 0" class="empty-state">
+      <p>You haven't created any playlists yet.</p>
+      <p>Go to the Library to create playlists!</p>
+    </div>
+
+    <!-- Playlists Section -->
+    <div *ngIf="localPlaylists.length > 0" class="playlists-section">
+      <!-- Fixed Actions Bar -->
+      <div class="actions-bar">
+        <div class="bulk-actions">
+          <button class="action-btn" (click)="selectAllLocal()">Select All</button>
+          <button class="action-btn" (click)="deselectAllLocal()">Deselect All</button>
+        </div>
+        <button
+          class="export-btn"
+          (click)="exportSelected()"
+          [disabled]="selectedLocalPlaylistIds.size === 0 || isExporting">
+          {{ isExporting ? 'Exporting...' : `Export ${selectedLocalPlaylistIds.size || ''} Selected` }}
+        </button>
+      </div>
+
+      <!-- Scrollable Playlists List -->
+      <div class="playlists-list">
+        <div
+          *ngFor="let playlist of localPlaylists"
+          class="playlist-card"
+          [class.selected]="selectedLocalPlaylistIds.has(playlist.id)"
+          [class.exported]="exportedPlaylists.has(playlist.id)"
+          [class.error]="exportErrors.has(playlist.id)"
+          (click)="!isExporting && toggleLocalPlaylistSelection(playlist.id)">
+
+          <input
+            type="checkbox"
+            class="playlist-checkbox"
+            [checked]="selectedLocalPlaylistIds.has(playlist.id)"
+            (change)="toggleLocalPlaylistSelection(playlist.id)"
+            [disabled]="isExporting"
+            (click)="$event.stopPropagation()">
+
+          <div class="playlist-info">
+            <div class="playlist-header">
+              <h3>{{ playlist.name }}</h3>
+              <div class="playlist-meta">
+                <span class="song-count">{{ playlist.songIds.length }} songs</span>
+                <button
+                  class="delete-btn"
+                  (click)="$event.stopPropagation(); deletePlaylist(playlist.id)"
+                  title="Delete playlist"
+                  [disabled]="isExporting">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <p class="playlist-description">
+              {{ playlist.description || '-' }}
+            </p>
+
+            <div class="status-badges" *ngIf="exportedPlaylists.has(playlist.id) || exportErrors.has(playlist.id)">
+              <span class="status-badge success" *ngIf="exportedPlaylists.has(playlist.id)">
+                ✓ Exported
+              </span>
+              <span class="status-badge error" *ngIf="exportErrors.has(playlist.id)">
+                {{ exportErrors.get(playlist.id) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

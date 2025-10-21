@@ -2,9 +2,10 @@
   <div class="header">
     <h2>Song Library</h2>
     <div class="header-actions">
-      <button class="action-btn" (click)="goToQuickRating()">Quick Rate</button>
-      <button class="action-btn primary" (click)="goToExport()">Export</button>
-      <button class="back-btn" (click)="backToDashboard()">← Dashboard</button>
+      <button class="action-btn" (click)="goToQuickRating()" [disabled]="allSongs.length === 0">Quick Rate</button>
+      <button class="action-btn primary" (click)="goToPlaylists()">Playlists</button>
+      <button class="action-btn" (click)="goToImport()">Import Songs</button>
+      <button class="action-btn logout-btn" (click)="logout()">Logout</button>
     </div>
   </div>
 
@@ -59,11 +60,12 @@
             class="artist-search-input"
             (click)="$event.stopPropagation()">
           <label *ngFor="let artist of filteredArtists" class="filter-item">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               [checked]="selectedArtists.has(artist)"
               (change)="toggleArtistFilter(artist)">
             <span>{{ artist }}</span>
+            <span class="artist-count">{{ getArtistSongCount(artist) }}</span>
           </label>
           <div *ngIf="filteredArtists.length === 0" class="no-results">No artists found</div>
         </div>
@@ -109,28 +111,42 @@
         <button class="bulk-btn" (click)="deselectAll()">Deselect All</button>
         <button class="bulk-btn" (click)="openBulkRating()" [disabled]="selectedSongs.size === 0">Rate Selected</button>
         <button class="bulk-btn" (click)="openBulkThemeAssignment()" [disabled]="selectedSongs.size === 0">Add Theme</button>
+        <button class="bulk-btn" (click)="addSelectedToPlaylist()" [disabled]="selectedSongs.size === 0">Add to Playlist</button>
         <button class="bulk-btn delete" (click)="bulkDelete()" [disabled]="selectedSongs.size === 0">Delete Selected</button>
       </div>
 
       <div class="songs-header">
-        <div class="view-controls">
-          <button 
-            [class.active]="viewMode === 'list'" 
-            (click)="viewMode = 'list'">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-              <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
-            </svg>
-          </button>
-          <button 
-            [class.active]="viewMode === 'grid'" 
-            (click)="viewMode = 'grid'">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-              <path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/>
-            </svg>
-          </button>
-          <button class="select-mode-btn" *ngIf="!selectMode" (click)="toggleSelectMode()">
-            Select
-          </button>
+        <div class="left-section">
+          <div class="playlist-indicator" *ngIf="currentPlaylist">
+            <span class="playlist-badge">
+              Viewing: {{ currentPlaylist.name }}
+            </span>
+            <button class="clear-playlist-btn" (click)="clearPlaylistView()" title="Back to full library">
+              ✕
+            </button>
+            <button class="edit-playlist-btn" (click)="openEditPlaylistInfoModal(currentPlaylist)" title="Edit playlist">
+              Edit
+            </button>
+          </div>
+          <div class="view-controls">
+            <button
+              [class.active]="viewMode === 'list'"
+              (click)="viewMode = 'list'">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+              </svg>
+            </button>
+            <button
+              [class.active]="viewMode === 'grid'"
+              (click)="viewMode = 'grid'">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/>
+              </svg>
+            </button>
+            <button class="select-mode-btn" *ngIf="!selectMode" (click)="toggleSelectMode()">
+              Select
+            </button>
+          </div>
         </div>
         <div class="sort-controls">
           <label>Sort by:</label>
@@ -144,26 +160,41 @@
             Rating {{ sortBy === 'rating' ? (sortAscending ? '▲' : '▼') : '' }}
           </button>
         </div>
-        <div class="song-count">
-          {{ filteredSongs.length }} / {{ allSongs.length }} songs
+        <div class="right-section">
+          <button class="shuffle-btn" (click)="shuffleSongs()" title="Shuffle songs">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+            </svg>
+          </button>
+          <div class="song-count">
+            {{ filteredSongs.length }} / {{ allSongs.length }} songs
+          </div>
         </div>
       </div>
 
+      <div *ngIf="allSongs.length === 0" class="no-songs-message">
+        <h3>No Songs in Library</h3>
+        <p>You haven't imported any songs yet. Import some playlists from YouTube Music to get started!</p>
+        <button class="import-songs-btn" (click)="goToImport()">Import Songs</button>
+      </div>
+
       <div class="songs-list" [class.grid-view]="viewMode === 'grid'" [class.select-mode]="selectMode">
-        <div *ngFor="let song of filteredSongs" 
-             class="song-item" 
-             [class.selected]="selectedSongs.has(song.id)"
-             (click)="selectMode && toggleSongSelection(song.id)">
+     <div *ngFor="let song of filteredSongs" 
+       class="song-item" 
+       [class.selected]="selectedSongs.has(song.id)"
+       [class.playing]="playingSongId === song.id && miniPlayerVisible"
+             (click)="selectMode ? toggleSongSelection(song.id) : playSong(song)"
+             role="button" tabindex="0"
+             (keydown.enter)="!selectMode && playSong(song)" (keydown.space)="$event.preventDefault(); !selectMode && playSong(song)">
           <input 
             *ngIf="selectMode" 
             type="checkbox" 
             class="song-checkbox" 
             [checked]="selectedSongs.has(song.id)"
-            (change)="toggleSongSelection(song.id)"
-            (click)="$event.stopPropagation()">
-          <img [src]="song.thumbnailUrl" [alt]="song.title" class="song-thumbnail" (click)="$event.stopPropagation()">
+            (click)="toggleSongSelection(song.id)">
+          <img [src]="song.thumbnailUrl" [alt]="song.title" class="song-thumbnail" [class.clickable]="!selectMode" (click)="!selectMode && $event.stopPropagation(); !selectMode && playSong(song)" [attr.data-playing]="playingSongId === song.id ? 'true' : 'false'">
           
-          <div class="song-info">
+          <div class="song-info" [class.clickable]="!selectMode" (click)="!selectMode && $event.stopPropagation(); !selectMode && playSong(song)">
             <div class="song-title">{{ song.title }}</div>
             <div class="song-artist">{{ song.artist }}</div>
           </div>
@@ -180,8 +211,8 @@
 
           <div class="song-rating" (click)="$event.stopPropagation()">
             <div class="rating-buttons">
-              <button 
-                *ngFor="let r of [1,2,3,4,5,6,7,8,9,10]" 
+              <button
+                *ngFor="let r of [1,2,3,4,5,6,7,8,9,10]"
                 class="rating-btn"
                 [class.active]="song.rating === r"
                 [class.low]="r <= 3"
@@ -193,7 +224,26 @@
             </div>
           </div>
 
-          <button class="delete-song-btn" (click)="deleteSong(song)" title="Delete song">
+          <div class="song-menu-container" (click)="$event.stopPropagation()">
+            <button class="song-menu-btn" (click)="toggleSongMenu(song.id, $event)" title="More options">
+              ⋮
+            </button>
+            <div class="song-menu-dropdown" *ngIf="openMenuForSong === song.id" (click)="$event.stopPropagation()">
+              <button class="menu-item" (click)="addSongToQueue(song, $event)" [disabled]="!miniPlayerVisible">
+                Add to Queue
+              </button>
+              <button class="menu-item" (click)="playSongNext(song, $event)" [disabled]="!miniPlayerVisible">
+                Play Next
+              </button>
+            </div>
+          </div>
+
+          <button class="add-to-playlist-btn" (click)="$event.stopPropagation(); addSongToPlaylist(song)" title="Add to playlist">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/>
+            </svg>
+          </button>
+          <button class="delete-song-btn" (click)="$event.stopPropagation(); deleteSong(song)" title="Delete song">
             <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
               <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
             </svg>
@@ -268,14 +318,14 @@
 </div>
 
 <!-- Bulk Rating Modal -->
-<div class="modal-overlay" *ngIf="showBulkRatingModal" (click)="showBulkRatingModal = false">
+<div class="modal-overlay" *ngIf="showBulkRatingModal" (click)="closeBulkRatingModal()">
   <div class="modal" (click)="$event.stopPropagation()">
     <h3>Rate {{ selectedSongs.size }} Songs</h3>
     <div class="modal-body">
       <label>Select Rating:</label>
       <div class="rating-buttons-modal">
-        <button 
-          *ngFor="let r of [1,2,3,4,5,6,7,8,9,10]" 
+        <button
+          *ngFor="let r of [1,2,3,4,5,6,7,8,9,10]"
           class="rating-btn-modal"
           [class.selected]="bulkRating === r"
           (click)="bulkRating = r">
@@ -286,21 +336,21 @@
     <div class="modal-actions">
       <button class="save-btn" (click)="confirmBulkRate()">Apply Rating</button>
       <button class="unrate-btn" (click)="confirmBulkUnrate()">Set to Unrated</button>
-      <button class="cancel-btn" (click)="showBulkRatingModal = false">Cancel</button>
+      <button class="cancel-btn" (click)="closeBulkRatingModal()">Cancel</button>
     </div>
   </div>
 </div>
 
 <!-- Bulk Theme Assignment Modal -->
-<div class="modal-overlay" *ngIf="showBulkThemeModal" (click)="showBulkThemeModal = false">
+<div class="modal-overlay" *ngIf="showBulkThemeModal" (click)="closeBulkThemeModal()">
   <div class="modal" (click)="$event.stopPropagation()">
     <h3>Add Themes to {{ selectedSongs.size }} Songs</h3>
     <div class="modal-body">
       <label>Select themes to apply:</label>
       <div class="themes-checklist bulk-themes-list">
         <label *ngFor="let theme of themes" class="theme-checkbox">
-          <input 
-            type="checkbox" 
+          <input
+            type="checkbox"
             [checked]="selectedBulkThemes.has(theme.id)"
             (change)="toggleBulkTheme(theme.id)">
           <span class="theme-badge" [style.background-color]="theme.color">
@@ -314,7 +364,382 @@
     </div>
     <div class="modal-actions">
       <button class="save-btn" (click)="confirmBulkThemeAssignment()" [disabled]="selectedBulkThemes.size === 0">Apply Themes</button>
-      <button class="cancel-btn" (click)="showBulkThemeModal = false">Cancel</button>
+      <button class="cancel-btn" (click)="closeBulkThemeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Playlist Viewer Modal -->
+<div class="modal-overlay" *ngIf="showPlaylistViewerModal" (click)="closePlaylistViewer()">
+  <div class="modal playlist-viewer-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>My Playlists</h3>
+      <button class="close-btn" (click)="closePlaylistViewer()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="playlist-actions-header">
+        <button class="create-btn" (click)="openCreatePlaylistModal('simple')">
+          + New Playlist
+        </button>
+        <button class="export-btn" (click)="goToExportPage()">
+          Export to YouTube
+        </button>
+      </div>
+
+      <div *ngIf="playlists.length === 0" class="empty-message">
+        <p>You haven't created any playlists yet.</p>
+        <p>Create one to organize your music!</p>
+      </div>
+
+      <div class="playlists-list" *ngIf="playlists.length > 0">
+        <div
+          *ngFor="let playlist of playlists"
+          class="playlist-viewer-item"
+          [class.active]="currentPlaylist?.id === playlist.id"
+          [class.starred]="playlist.starred">
+          <button
+            class="star-playlist-btn"
+            [class.starred]="playlist.starred"
+            (click)="togglePlaylistStar(playlist)"
+            [title]="playlist.starred ? 'Unstar playlist' : 'Star playlist'">
+            <span *ngIf="!playlist.starred">☆</span>
+            <span *ngIf="playlist.starred">★</span>
+          </button>
+          <div class="playlist-viewer-content" (click)="viewPlaylist(playlist)">
+            <div class="playlist-viewer-name">{{ playlist.name }}</div>
+            <div class="playlist-viewer-info">
+              <span class="song-count">{{ playlist.songIds.length }} songs</span>
+              <span class="description" *ngIf="playlist.description">{{ playlist.description }}</span>
+            </div>
+          </div>
+          <button
+            class="delete-playlist-btn"
+            (click)="deletePlaylistFromViewer(playlist)"
+            title="Delete playlist">
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Playlist Modal -->
+<div class="modal-overlay" *ngIf="showCreatePlaylistModal" (click)="closeCreatePlaylistModal()">
+  <div class="modal create-playlist-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ createMode === 'simple' ? 'Create Playlist' : 'Create Playlist (Advanced)' }}</h3>
+      <button class="close-btn" (click)="closeCreatePlaylistModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="mode-toggle">
+        <button
+          [class.active]="createMode === 'simple'"
+          (click)="createMode = 'simple'">
+          Simple
+        </button>
+        <button
+          [class.active]="createMode === 'advanced'"
+          (click)="createMode = 'advanced'">
+          Advanced Filter
+        </button>
+      </div>
+
+      <div class="form-group">
+        <label>Playlist Name:</label>
+        <input
+          type="text"
+          [(ngModel)]="newPlaylistName"
+          placeholder="Enter playlist name"
+          class="text-input">
+      </div>
+
+      <div class="form-group">
+        <label>Description (optional):</label>
+        <textarea
+          [(ngModel)]="newPlaylistDescription"
+          placeholder="Add a description"
+          rows="2"
+          class="text-input"></textarea>
+      </div>
+
+
+      <div *ngIf="createMode === 'advanced'" class="advanced-filters">
+        <h4>Filter Songs</h4>
+
+        <div class="filter-group">
+          <label>Rating Range:</label>
+          <div class="range-inputs">
+            <input type="number" [(ngModel)]="newPlaylistFilters.minRating" min="0" max="10" placeholder="Min">
+            <span>to</span>
+            <input type="number" [(ngModel)]="newPlaylistFilters.maxRating" min="0" max="10" placeholder="Max">
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="newPlaylistFilters.includeUnrated">
+            Include unrated songs
+          </label>
+        </div>
+
+        <div class="filter-group" *ngIf="themes.length > 0">
+          <label>Themes:</label>
+          <div class="theme-mode-toggle">
+            <button
+              [class.active]="newPlaylistFilters.themeFilterMode === 'any'"
+              (click)="newPlaylistFilters.themeFilterMode = 'any'">
+              Match ANY
+            </button>
+            <button
+              [class.active]="newPlaylistFilters.themeFilterMode === 'all'"
+              (click)="newPlaylistFilters.themeFilterMode = 'all'">
+              Match ALL
+            </button>
+          </div>
+          <div class="theme-list">
+            <button
+              *ngFor="let theme of themes"
+              class="theme-badge"
+              [class.selected]="newPlaylistFilters.themeIds?.includes(theme.id)"
+              [style.background-color]="theme.color"
+              (click)="togglePlaylistFilterTheme(theme.id)">
+              {{ theme.name }}
+            </button>
+          </div>
+        </div>
+
+        <div class="filter-group" *ngIf="uniqueArtists.length > 0">
+          <label>Artists:</label>
+          <div class="artist-filter-list">
+            <button
+              *ngFor="let artist of uniqueArtists"
+              class="artist-badge"
+              [class.selected]="newPlaylistFilters.artistIds?.includes(artist)"
+              (click)="togglePlaylistFilterArtist(artist)">
+              {{ artist }}
+            </button>
+          </div>
+        </div>
+
+        <div class="preview-count">
+          {{ createPlaylistFilteredSongs.length }} songs will be added
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="cancel-btn" (click)="closeCreatePlaylistModal()">Cancel</button>
+      <button
+        class="save-btn"
+        (click)="createPlaylist()"
+        [disabled]="!newPlaylistName.trim() || (createMode === 'advanced' && createPlaylistFilteredSongs.length === 0)">
+        Create Playlist
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Playlist Modal -->
+<div class="modal-overlay" *ngIf="showEditPlaylistModal" (click)="closeEditPlaylistModal()">
+  <div class="modal edit-playlist-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Add Songs to "{{ currentPlaylist?.name }}"</h3>
+      <button class="close-btn" (click)="closeEditPlaylistModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="advanced-filters">
+        <h4>Filter Songs</h4>
+
+        <div class="filter-group">
+          <label>Rating Range:</label>
+          <div class="range-inputs">
+            <input type="number" [(ngModel)]="editPlaylistFilters.minRating" min="0" max="10" placeholder="Min">
+            <span>to</span>
+            <input type="number" [(ngModel)]="editPlaylistFilters.maxRating" min="0" max="10" placeholder="Max">
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editPlaylistFilters.includeUnrated">
+            Include unrated songs
+          </label>
+        </div>
+
+        <div class="filter-group" *ngIf="themes.length > 0">
+          <label>Themes:</label>
+          <div class="theme-mode-toggle">
+            <button
+              [class.active]="editPlaylistFilters.themeFilterMode === 'any'"
+              (click)="editPlaylistFilters.themeFilterMode = 'any'">
+              Match ANY
+            </button>
+            <button
+              [class.active]="editPlaylistFilters.themeFilterMode === 'all'"
+              (click)="editPlaylistFilters.themeFilterMode = 'all'">
+              Match ALL
+            </button>
+          </div>
+          <div class="theme-list">
+            <button
+              *ngFor="let theme of themes"
+              class="theme-badge"
+              [class.selected]="editPlaylistFilters.themeIds?.includes(theme.id)"
+              [style.background-color]="theme.color"
+              (click)="toggleEditPlaylistFilterTheme(theme.id)">
+              {{ theme.name }}
+            </button>
+          </div>
+        </div>
+
+        <div class="filter-group" *ngIf="uniqueArtists.length > 0">
+          <label>Artists:</label>
+          <div class="artist-filter-list">
+            <button
+              *ngFor="let artist of uniqueArtists"
+              class="artist-badge"
+              [class.selected]="editPlaylistFilters.artistIds?.includes(artist)"
+              (click)="toggleEditPlaylistFilterArtist(artist)">
+              {{ artist }}
+            </button>
+          </div>
+        </div>
+
+        <div class="preview-count">
+          {{ editPlaylistFilteredSongs.length }} songs match filters ({{ editPlaylistNewSongsCount }} new)
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="cancel-btn" (click)="closeEditPlaylistModal()">Cancel</button>
+      <button class="save-btn" (click)="addFilteredSongsToPlaylist()">
+        Add Filtered Songs
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Back to Top Button -->
+<button *ngIf="showBackToTop" class="back-to-top-btn" (click)="scrollToTop()" title="Back to top">
+  ↑
+</button>
+
+<!-- Edit Playlist Info Modal -->
+<div class="modal-overlay" *ngIf="showEditPlaylistInfoModal" (click)="closeEditPlaylistInfoModal()">
+  <div class="modal edit-playlist-info-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Edit Playlist</h3>
+      <button class="close-btn" (click)="closeEditPlaylistInfoModal()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="mode-toggle">
+        <button
+          [class.active]="editPlaylistInfoTab === 'info'"
+          (click)="editPlaylistInfoTab = 'info'">
+          Name & Description
+        </button>
+        <button
+          [class.active]="editPlaylistInfoTab === 'filters'"
+          (click)="editPlaylistInfoTab = 'filters'">
+          Add Songs (Filters)
+        </button>
+      </div>
+
+      <div *ngIf="editPlaylistInfoTab === 'info'">
+        <div class="form-group">
+          <label>Playlist Name:</label>
+          <input
+            type="text"
+            [(ngModel)]="editPlaylistName"
+            placeholder="Enter playlist name"
+            class="text-input">
+        </div>
+
+        <div class="form-group">
+          <label>Description (optional):</label>
+          <textarea
+            [(ngModel)]="editPlaylistDescription"
+            placeholder="Add a description"
+            rows="3"
+            class="text-input"></textarea>
+        </div>
+      </div>
+
+      <div *ngIf="editPlaylistInfoTab === 'filters'" class="advanced-filters">
+        <h4>Filter Songs</h4>
+
+        <div class="filter-group">
+          <label>Rating Range:</label>
+          <div class="range-inputs">
+            <input type="number" [(ngModel)]="editPlaylistFilters.minRating" min="0" max="10" placeholder="Min">
+            <span>to</span>
+            <input type="number" [(ngModel)]="editPlaylistFilters.maxRating" min="0" max="10" placeholder="Max">
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="editPlaylistFilters.includeUnrated">
+            Include unrated songs
+          </label>
+        </div>
+
+        <div class="filter-group" *ngIf="themes.length > 0">
+          <label>Themes:</label>
+          <div class="theme-mode-toggle">
+            <button
+              [class.active]="editPlaylistFilters.themeFilterMode === 'any'"
+              (click)="editPlaylistFilters.themeFilterMode = 'any'">
+              Match ANY
+            </button>
+            <button
+              [class.active]="editPlaylistFilters.themeFilterMode === 'all'"
+              (click)="editPlaylistFilters.themeFilterMode = 'all'">
+              Match ALL
+            </button>
+          </div>
+          <div class="theme-list">
+            <button
+              *ngFor="let theme of themes"
+              class="theme-badge"
+              [class.selected]="editPlaylistFilters.themeIds?.includes(theme.id)"
+              [style.background-color]="theme.color"
+              (click)="toggleEditPlaylistFilterTheme(theme.id)">
+              {{ theme.name }}
+            </button>
+          </div>
+        </div>
+
+        <div class="filter-group" *ngIf="uniqueArtists.length > 0">
+          <label>Artists:</label>
+          <div class="artist-filter-list">
+            <button
+              *ngFor="let artist of uniqueArtists"
+              class="artist-badge"
+              [class.selected]="editPlaylistFilters.artistIds?.includes(artist)"
+              (click)="toggleEditPlaylistFilterArtist(artist)">
+              {{ artist }}
+            </button>
+          </div>
+        </div>
+
+        <div class="preview-count">
+          {{ editPlaylistFilteredSongs.length }} songs match filters ({{ editPlaylistNewSongsCount }} new)
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="cancel-btn" (click)="closeEditPlaylistInfoModal()">Cancel</button>
+      <button
+        *ngIf="editPlaylistInfoTab === 'info'"
+        class="save-btn"
+        (click)="savePlaylistInfo()"
+        [disabled]="!editPlaylistName.trim()">
+        Save Changes
+      </button>
+      <button
+        *ngIf="editPlaylistInfoTab === 'filters'"
+        class="save-btn"
+        (click)="addFilteredSongsToPlaylist()">
+        Add Filtered Songs
+      </button>
     </div>
   </div>
 </div>

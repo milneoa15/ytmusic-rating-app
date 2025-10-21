@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Song, SongRating } from '../models/song.model';
 import { Theme, SongTheme } from '../models/theme.model';
+import { LocalPlaylist, PlaylistFilters } from '../models/playlist.model';
 
 interface RatingsDatabase {
   [userId: string]: {
@@ -26,6 +27,12 @@ interface ImportedSongsDatabase {
   };
 }
 
+interface LocalPlaylistsDatabase {
+  [userId: string]: {
+    [playlistId: string]: LocalPlaylist;
+  };
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -34,6 +41,7 @@ export class StorageService {
   private readonly CATEGORIES_KEY = 'ytmusic_categories';
   private readonly SONG_CATEGORIES_KEY = 'ytmusic_song_categories';
   private readonly IMPORTED_SONGS_KEY = 'ytmusic_imported_songs';
+  private readonly LOCAL_PLAYLISTS_KEY = 'ytmusic_local_playlists';
 
   constructor() {
     this.initializeStorage();
@@ -51,6 +59,9 @@ export class StorageService {
     }
     if (!localStorage.getItem(this.IMPORTED_SONGS_KEY)) {
       localStorage.setItem(this.IMPORTED_SONGS_KEY, JSON.stringify({}));
+    }
+    if (!localStorage.getItem(this.LOCAL_PLAYLISTS_KEY)) {
+      localStorage.setItem(this.LOCAL_PLAYLISTS_KEY, JSON.stringify({}));
     }
   }
 
@@ -316,14 +327,170 @@ export class StorageService {
   deleteSong(userId: string, songId: string): void {
     // Remove from imported songs
     this.removeImportedSong(userId, songId);
-    
+
     // Remove rating if exists
     this.deleteRating(userId, songId);
-    
+
     // Remove all theme assignments
     const songThemes = this.getSongThemes(userId, songId);
     songThemes.forEach(themeId => {
       this.removeThemeFromSong(userId, songId, themeId);
     });
+  }
+
+  // ============= LOCAL PLAYLIST MANAGEMENT =============
+
+  private getLocalPlaylistsDatabase(): LocalPlaylistsDatabase {
+    const data = localStorage.getItem(this.LOCAL_PLAYLISTS_KEY);
+    return data ? JSON.parse(data) : {};
+  }
+
+  private saveLocalPlaylistsDatabase(db: LocalPlaylistsDatabase): void {
+    localStorage.setItem(this.LOCAL_PLAYLISTS_KEY, JSON.stringify(db));
+  }
+
+  // Create a new local playlist
+  createLocalPlaylist(
+    userId: string,
+    name: string,
+    description?: string,
+    filters?: PlaylistFilters
+  ): LocalPlaylist {
+    const db = this.getLocalPlaylistsDatabase();
+
+    if (!db[userId]) {
+      db[userId] = {};
+    }
+
+    const playlist: LocalPlaylist = {
+      id: `playlist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      userId,
+      name,
+      description,
+      songIds: [],
+      filters,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    db[userId][playlist.id] = playlist;
+    this.saveLocalPlaylistsDatabase(db);
+    return playlist;
+  }
+
+  // Get all local playlists for a user (sorted with starred first)
+  getLocalPlaylists(userId: string): LocalPlaylist[] {
+    const db = this.getLocalPlaylistsDatabase();
+    const userPlaylists = db[userId] || {};
+    const playlists = Object.values(userPlaylists);
+
+    // Sort: starred playlists first, then by creation date
+    return playlists.sort((a, b) => {
+      if (a.starred && !b.starred) return -1;
+      if (!a.starred && b.starred) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }
+
+  // Get a specific local playlist
+  getLocalPlaylist(userId: string, playlistId: string): LocalPlaylist | null {
+    const db = this.getLocalPlaylistsDatabase();
+    return db[userId]?.[playlistId] || null;
+  }
+
+  // Update a local playlist
+  updateLocalPlaylist(
+    userId: string,
+    playlistId: string,
+    updates: Partial<Omit<LocalPlaylist, 'id' | 'userId' | 'createdAt'>>
+  ): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]?.[playlistId]) {
+      db[userId][playlistId] = {
+        ...db[userId][playlistId],
+        ...updates,
+        updatedAt: new Date()
+      };
+      this.saveLocalPlaylistsDatabase(db);
+    }
+  }
+
+  // Delete a local playlist
+  deleteLocalPlaylist(userId: string, playlistId: string): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]?.[playlistId]) {
+      delete db[userId][playlistId];
+      this.saveLocalPlaylistsDatabase(db);
+    }
+  }
+
+  // Add a song to a local playlist
+  addSongToLocalPlaylist(userId: string, playlistId: string, songId: string): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]?.[playlistId]) {
+      const playlist = db[userId][playlistId];
+      if (!playlist.songIds.includes(songId)) {
+        playlist.songIds.push(songId);
+        playlist.updatedAt = new Date();
+        this.saveLocalPlaylistsDatabase(db);
+      }
+    }
+  }
+
+  // Add multiple songs to a local playlist
+  addSongsToLocalPlaylist(userId: string, playlistId: string, songIds: string[]): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]?.[playlistId]) {
+      const playlist = db[userId][playlistId];
+      songIds.forEach(songId => {
+        if (!playlist.songIds.includes(songId)) {
+          playlist.songIds.push(songId);
+        }
+      });
+      playlist.updatedAt = new Date();
+      this.saveLocalPlaylistsDatabase(db);
+    }
+  }
+
+  // Remove a song from a local playlist
+  removeSongFromLocalPlaylist(userId: string, playlistId: string, songId: string): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]?.[playlistId]) {
+      const playlist = db[userId][playlistId];
+      playlist.songIds = playlist.songIds.filter(id => id !== songId);
+      playlist.updatedAt = new Date();
+      this.saveLocalPlaylistsDatabase(db);
+    }
+  }
+
+  // Get songs from a local playlist (returns Song objects)
+  getLocalPlaylistSongs(userId: string, playlistId: string): Song[] {
+    const playlist = this.getLocalPlaylist(userId, playlistId);
+    if (!playlist) return [];
+
+    const importedSongs = this.getImportedSongs(userId);
+    return playlist.songIds
+      .map(songId => importedSongs.find(s => s.id === songId))
+      .filter(song => song !== undefined) as Song[];
+  }
+
+  // Clear all local playlists for a user
+  clearLocalPlaylists(userId: string): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]) {
+      delete db[userId];
+      this.saveLocalPlaylistsDatabase(db);
+    }
+  }
+
+  // Toggle starred status for a playlist
+  togglePlaylistStarred(userId: string, playlistId: string): void {
+    const db = this.getLocalPlaylistsDatabase();
+    if (db[userId]?.[playlistId]) {
+      const playlist = db[userId][playlistId];
+      playlist.starred = !playlist.starred;
+      playlist.updatedAt = new Date();
+      this.saveLocalPlaylistsDatabase(db);
+    }
   }
 }

@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { AuthService } from '../../services/auth.service';
 import { StorageService } from '../../services/storage.service';
 import { ModalService } from '../../services/modal.service';
+import { MusicPlayerService } from '../../services/music-player.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -20,7 +21,8 @@ export class Dashboard implements OnInit {
     private router: Router,
     private authService: AuthService,
     private storageService: StorageService,
-    private modalService: ModalService
+    private modalService: ModalService,
+    private musicPlayerService: MusicPlayerService
   ) {}
 
   ngOnInit(): void {
@@ -58,21 +60,13 @@ export class Dashboard implements OnInit {
     this.router.navigate(['/rating'], { state: { songs } });
   }
 
-  async exportPlaylist(): Promise<void> {
-    const user = this.authService.currentUserValue;
-    if (!user) return;
-    
-    const songs = this.storageService.getImportedSongs(user.id);
-    if (songs.length === 0) {
-      await this.modalService.alert('No Songs', 'Please import playlists first!');
-      this.router.navigate(['/import']);
-      return;
-    }
-    
-    this.router.navigate(['/export']);
+  managePlaylists(): void {
+    this.router.navigate(['/playlists']);
   }
 
   logout(): void {
+    // Close player before logging out
+    this.musicPlayerService.closePlayer();
     this.authService.logout();
     this.router.navigate(['/login']);
   }

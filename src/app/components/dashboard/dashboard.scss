@@ -1,5 +1,6 @@
 .dashboard-container {
   min-height: 100vh;
+  padding-bottom: calc(var(--mini-player-height, 92px) + 2rem);
   background: var(--bg-primary);
 }
 

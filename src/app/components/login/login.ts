@@ -25,7 +25,7 @@ export class Login {
 
     try {
       await this.authService.loginWithYouTube();
-      this.router.navigate(['/dashboard']);
+      this.router.navigate(['/library']);
     } catch (error) {
       this.errorMessage = 'Failed to login with YouTube Music. Please try again.';
       console.error('Login error:', error);

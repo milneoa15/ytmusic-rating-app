@@ -1,2 +1,109 @@
 <router-outlet></router-outlet>
 <app-confirmation-modal></app-confirmation-modal>
+<app-playlist-selector></app-playlist-selector>
+
+<!-- Expandable video overlay (kept in DOM for audio playback) -->
+<div class="video-panel" *ngIf="miniPlayerVisible" [class.expanded]="videoExpanded" aria-live="polite">
+  <div class="video-inner">
+    <button class="collapse-video-btn" (click)="toggleVideo($event)" aria-label="Collapse video">⤡</button>
+    <div class="yt-frame">
+      <div id="yt-player" role="region" aria-label="YouTube video"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Sticky bottom mini player -->
+<div class="mini-player" *ngIf="miniPlayerVisible" aria-live="polite">
+  <div class="mini-left">
+    <img *ngIf="currentSong?.thumbnailUrl" [src]="currentSong?.thumbnailUrl" [alt]="currentSong?.title" class="mini-thumb">
+    <div class="mini-details">
+      <div class="mini-title" [title]="currentSong?.title || ''">{{ currentSong?.title }}</div>
+      <div class="mini-artist" [title]="currentSong?.artist || ''">{{ currentSong?.artist }}</div>
+    </div>
+  </div>
+  <div class="mini-progress">
+    <span class="time">{{ formatTime(currentTime) }}</span>
+    <input type="range" min="0" [max]="duration || 100" [value]="currentTime" (input)="onSeek($event)" [disabled]="!playerReady" aria-label="Seek video">
+    <span class="time">{{ playerReady && duration > 0 ? formatTime(duration) : '--:--' }}</span>
+  </div>
+  <div class="mini-controls">
+    <button class="control-btn" (click)="playPreviousSong()" [disabled]="!musicPlayerService.hasPrevious()" aria-label="Previous song">
+      <span>⏮</span>
+    </button>
+    <button class="control-btn play-pause" (click)="togglePlayback($event)" [attr.aria-label]="isPlaying ? 'Pause playback' : 'Resume playback'">
+      <span *ngIf="isPlaying">❚❚</span>
+      <span *ngIf="!isPlaying">▶</span>
+    </button>
+    <button class="control-btn" (click)="playNextSong()" [disabled]="!musicPlayerService.hasNext()" aria-label="Next song">
+      <span>⏭</span>
+    </button>
+    <button class="control-btn" (click)="toggleQueue()" [class.active]="showQueue" aria-label="Toggle queue">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+        <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/>
+      </svg>
+    </button>
+    <button class="control-btn" (click)="toggleVideo($event)" [attr.aria-expanded]="videoExpanded" [attr.aria-label]="videoExpanded ? 'Collapse video' : 'Expand video'">
+      <span *ngIf="!videoExpanded">⤢</span>
+      <span *ngIf="videoExpanded">⤡</span>
+    </button>
+    <button class="control-btn" (click)="closePlayer()" aria-label="Stop playback">✕</button>
+  </div>
+</div>
+
+<!-- Queue Panel -->
+<div class="queue-panel" *ngIf="showQueue && miniPlayerVisible">
+  <div class="queue-header">
+    <h3>Queue ({{ musicPlayerService.getQueue().length }} songs)</h3>
+    <button class="close-queue-btn" (click)="toggleQueue()" aria-label="Close queue">✕</button>
+  </div>
+  <div class="queue-list" #queueList>
+    <div *ngFor="let song of musicPlayerService.getQueue(); let i = index"
+         class="queue-item-wrapper"
+         [class.drop-before]="dropPosition === 'before' && dragOverIndex === i"
+         [class.drop-after]="dropPosition === 'after' && dragOverIndex === i"
+         (dragover)="onDragOver($event, i)"
+         (drop)="onDrop($event, i)">
+      <div class="queue-item"
+           [class.current]="i === musicPlayerService.getCurrentIndex()"
+           [class.dragging]="draggedIndex === i"
+           draggable="true"
+           (dragstart)="onDragStart($event, i)"
+           (dragend)="onDragEnd($event)"
+           (dragover)="onDragOver($event, i)"
+           (dragleave)="onDragLeave($event)"
+           (drop)="onDrop($event, i)"
+           (click)="i !== musicPlayerService.getCurrentIndex() && playFromQueue(i)">
+        <div class="drag-handle" title="Drag to reorder">☰</div>
+        <div class="queue-number">{{ i + 1 }}</div>
+        <img [src]="song.thumbnailUrl" [alt]="song.title" class="queue-thumb">
+        <div class="queue-info">
+          <div class="queue-title">{{ song.title }}</div>
+          <div class="queue-artist">{{ song.artist }}</div>
+        </div>
+        <div class="queue-actions">
+          <div class="queue-rating" *ngIf="song.rating">
+            <span class="rating-badge">{{ song.rating }}/10</span>
+          </div>
+          <button *ngIf="i < musicPlayerService.getQueue().length - 1"
+                  class="cutoff-queue-btn"
+                  (click)="cutoffQueueAt(i, $event)"
+                  title="Remove all songs after this">
+            ✂
+          </button>
+          <button *ngIf="i !== musicPlayerService.getCurrentIndex()"
+                  class="remove-from-queue-btn"
+                  (click)="removeFromQueue(i); $event.stopPropagation()"
+                  aria-label="Remove from queue">
+            ✕
+          </button>
+          <div *ngIf="i === musicPlayerService.getCurrentIndex()" class="now-playing-badge">
+            Now Playing
+          </div>
+        </div>
+      </div>
+    </div>
+    <div *ngIf="musicPlayerService.getQueue().length === 0" class="empty-queue">
+      No songs in queue
+    </div>
+  </div>
+</div>

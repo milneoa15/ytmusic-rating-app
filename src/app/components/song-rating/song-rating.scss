@@ -1,6 +1,7 @@
 .rating-container {
   min-height: 100vh;
   padding: 1.5rem;
+  padding-bottom: calc(var(--mini-player-height, 92px) + 3rem);
   background: var(--bg-primary);
   max-width: 800px;
   margin: 0 auto;
@@ -266,7 +267,7 @@
     flex-wrap: nowrap;
     gap: 0.5rem;
     overflow-x: auto;
-    padding: 0.25rem 0 0.5rem 0;
+    padding: 0.25rem 0.5rem 0.5rem 0.5rem;
 
     &::-webkit-scrollbar {
       height: 6px;

@@ -19,6 +19,7 @@ import { forkJoin } from 'rxjs';
 export class PlaylistImport implements OnInit {
   playlists: Playlist[] = [];
   selectedPlaylistIds: Set<string> = new Set();
+  saveAsLocalPlaylistIds: Set<string> = new Set(); // Which playlists to also save as local playlists
   isLoading = false;
   isImporting = false;
   errorMessage = '';
@@ -71,6 +72,14 @@ export class PlaylistImport implements OnInit {
     this.selectedPlaylistIds.clear();
   }
 
+  toggleSaveAsLocalPlaylist(playlistId: string): void {
+    if (this.saveAsLocalPlaylistIds.has(playlistId)) {
+      this.saveAsLocalPlaylistIds.delete(playlistId);
+    } else {
+      this.saveAsLocalPlaylistIds.add(playlistId);
+    }
+  }
+
   importSelectedPlaylists(): void {
     if (this.selectedPlaylistIds.size === 0) {
       this.errorMessage = 'Please select at least one playlist';
@@ -95,14 +104,16 @@ export class PlaylistImport implements OnInit {
     // Fetch all playlists' songs in parallel
     forkJoin(playlistObservables).subscribe({
       next: (songsArrays: Song[][]) => {
-        // Flatten the array and deduplicate by videoId
+        // Flatten the array and deduplicate by title + artist combination
         const songMap = new Map<string, Song>();
-        
+
         songsArrays.forEach((songs, index) => {
           songs.forEach(song => {
-            // Only add if we haven't seen this videoId before
-            if (!songMap.has(song.videoId)) {
-              songMap.set(song.videoId, song);
+            // Create a unique key based on title and artist (case-insensitive)
+            const dedupeKey = `${song.title.toLowerCase()}|${song.artist.toLowerCase()}`;
+            // Only add if we haven't seen this title+artist combination before
+            if (!songMap.has(dedupeKey)) {
+              songMap.set(dedupeKey, song);
             }
           });
           completedPlaylists++;
@@ -116,10 +127,34 @@ export class PlaylistImport implements OnInit {
         const userId = this.authService.currentUserValue?.id;
         if (userId) {
           this.storageService.saveImportedSongs(userId, uniqueSongs);
+
+          // Create local playlists for selected playlists
+          selectedPlaylists.forEach((playlist, index) => {
+            if (this.saveAsLocalPlaylistIds.has(playlist.id)) {
+              const playlistSongs = songsArrays[index];
+              const songIds = playlistSongs.map(s => s.id);
+
+              // Create local playlist
+              this.storageService.createLocalPlaylist(
+                userId,
+                playlist.title,
+                playlist.description || `Imported from YouTube Music`
+              );
+
+              // Get the newly created playlist
+              const localPlaylists = this.storageService.getLocalPlaylists(userId);
+              const localPlaylist = localPlaylists[localPlaylists.length - 1];
+
+              // Add songs to the playlist
+              if (localPlaylist) {
+                this.storageService.addSongsToLocalPlaylist(userId, localPlaylist.id, songIds);
+              }
+            }
+          });
         }
 
         console.log(`✅ Imported ${uniqueSongs.length} unique songs from ${totalPlaylists} playlists`);
-        
+
         // Navigate to library view
         this.router.navigate(['/library']);
       },

@@ -22,24 +22,29 @@
       <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
 
       <div class="playlist-grid">
-        <div 
-          *ngFor="let playlist of playlists" 
+        <div
+          *ngFor="let playlist of playlists"
           class="playlist-card"
           [class.selected]="isPlaylistSelected(playlist.id)"
           (click)="togglePlaylistSelection(playlist.id)">
-          <div class="checkbox-overlay">
-            <input 
-              type="checkbox" 
+          <div class="checkbox">
+            <input
+              type="checkbox"
               [checked]="isPlaylistSelected(playlist.id)"
               (click)="$event.stopPropagation()"
               (change)="togglePlaylistSelection(playlist.id)">
           </div>
-          <div class="playlist-thumbnail">
-            <img [src]="playlist.thumbnailUrl" [alt]="playlist.title">
-          </div>
           <div class="playlist-info">
-            <h4>{{ playlist.title }}</h4>
-            <p>{{ playlist.songCount }} songs</p>
+            <div class="playlist-name">{{ playlist.title }}</div>
+            <div class="playlist-count">{{ playlist.songCount }} songs</div>
+            <label class="save-as-local-label" (click)="$event.stopPropagation()">
+              <input
+                type="checkbox"
+                [checked]="saveAsLocalPlaylistIds.has(playlist.id)"
+                (change)="toggleSaveAsLocalPlaylist(playlist.id)"
+                [disabled]="!isPlaylistSelected(playlist.id)">
+              <span>Save as local playlist</span>
+            </label>
           </div>
         </div>
       </div>
