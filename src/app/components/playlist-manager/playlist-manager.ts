@@ -235,7 +235,6 @@ export class PlaylistManager implements OnInit {
     const selectedPlaylists = this.youtubePlaylists.filter(p => this.selectedYoutubePlaylistIds.has(p.id));
     const totalPlaylists = selectedPlaylists.length;
     let completedPlaylists = 0;
-    const allSongs: Song[] = [];
 
     // Create an array of observables for fetching songs from each playlist
     const playlistObservables = selectedPlaylists.map(playlist => {
@@ -246,48 +245,66 @@ export class PlaylistManager implements OnInit {
     // Fetch all playlists' songs in parallel
     forkJoin(playlistObservables).subscribe({
       next: (songsArrays: Song[][]) => {
-        // Flatten the array and deduplicate by title + artist combination
+        const userId = this.authService.currentUserValue?.id;
+        const existingSongMap = new Map<string, Song>();
+
+        if (userId) {
+          const previouslyImportedSongs = this.storageService.getImportedSongs(userId);
+          previouslyImportedSongs.forEach(existingSong => {
+            const key = this.buildSongKey(existingSong.title, existingSong.artist);
+            existingSongMap.set(key, existingSong);
+          });
+        }
+
         const songMap = new Map<string, Song>();
+        const playlistSongIds: string[][] = [];
 
         songsArrays.forEach((songs, index) => {
+          const canonicalIds: string[] = [];
+
           songs.forEach(song => {
-            // Create a unique key based on title and artist (case-insensitive)
-            const dedupeKey = `${song.title.toLowerCase()}|${song.artist.toLowerCase()}`;
-            // Only add if we haven't seen this title+artist combination before
-            if (!songMap.has(dedupeKey)) {
-              songMap.set(dedupeKey, song);
+            const songKey = this.buildSongKey(song.title, song.artist);
+            let canonicalSong = songMap.get(songKey);
+
+            if (!canonicalSong) {
+              const existingSong = existingSongMap.get(songKey);
+              const normalizedSong: Song = {
+                ...(existingSong ?? {}),
+                ...song,
+                id: existingSong?.id || this.generateCanonicalSongId(song)
+              };
+
+              songMap.set(songKey, normalizedSong);
+              existingSongMap.set(songKey, normalizedSong);
+              canonicalSong = normalizedSong;
             }
+
+            canonicalIds.push(canonicalSong.id);
           });
+
+          playlistSongIds[index] = Array.from(new Set(canonicalIds));
           completedPlaylists++;
           this.importProgress = Math.round((completedPlaylists / totalPlaylists) * 100);
         });
 
-        // Convert map to array
         const uniqueSongs = Array.from(songMap.values());
 
-        // Save all imported songs to storage
-        const userId = this.authService.currentUserValue?.id;
         if (userId) {
           this.storageService.saveImportedSongs(userId, uniqueSongs);
 
-          // Create local playlists for selected playlists
           selectedPlaylists.forEach((playlist, index) => {
             if (this.saveAsLocalPlaylistIds.has(playlist.id)) {
-              const playlistSongs = songsArrays[index];
-              const songIds = playlistSongs.map(s => s.id);
+              const songIds = playlistSongIds[index] ?? [];
 
-              // Create local playlist
               this.storageService.createLocalPlaylist(
                 userId,
                 playlist.title,
                 playlist.description || `Imported from YouTube Music`
               );
 
-              // Get the newly created playlist
               const localPlaylists = this.storageService.getLocalPlaylists(userId);
               const localPlaylist = localPlaylists[localPlaylists.length - 1];
 
-              // Add songs to the playlist
               if (localPlaylist) {
                 this.storageService.addSongsToLocalPlaylist(userId, localPlaylist.id, songIds);
               }
@@ -306,6 +323,36 @@ export class PlaylistManager implements OnInit {
         this.isImporting = false;
       }
     });
+  }
+
+  private buildSongKey(title: string, artist: string): string {
+    return `${this.normalizeSongField(artist)}|${this.normalizeSongField(title)}`;
+  }
+
+  private generateCanonicalSongId(song: Song): string {
+    const normalizedArtist = this.normalizeSongField(song.artist);
+    const normalizedTitle = this.normalizeSongField(song.title);
+    const parts = [normalizedArtist, normalizedTitle].filter(Boolean);
+
+    if (parts.length > 0) {
+      return `song_${parts.join('_')}`;
+    }
+
+    return `song_${song.videoId || song.id}`;
+  }
+
+  private normalizeSongField(value: string): string {
+    if (!value) {
+      return '';
+    }
+
+    return value
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   backToDashboard(): void {
