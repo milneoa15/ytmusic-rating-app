@@ -73,29 +73,35 @@ export class PlaylistExport implements OnInit {
       return;
     }
 
-    // Load all imported songs from storage
-    this.songs = this.storageService.getImportedSongs(userId);
-    
-    if (this.songs.length === 0) {
-      this.router.navigate(['/import']);
-      return;
-    }
+    const run = async () => {
+      await this.storageService.waitUntilReady();
 
-    // Load themes
-    this.themes = this.storageService.getThemes(userId);
+      // Load all imported songs from storage
+      this.songs = this.storageService.getImportedSongs(userId);
+      
+      if (this.songs.length === 0) {
+        this.router.navigate(['/import']);
+        return;
+      }
 
-    // Build songs with metadata
-    this.allSongsWithMetadata = this.songs.map(song => {
-      const rating = this.storageService.getRating(userId, song.id)?.rating;
-      const themes = this.storageService.getSongThemes(userId, song.id);
-      return {
-        ...song,
-        rating,
-        themes
-      };
-    });
+      // Load themes
+      this.themes = this.storageService.getThemes(userId);
 
-    this.exportOptions.playlistName = 'My Playlist';
+      // Build songs with metadata
+      this.allSongsWithMetadata = this.songs.map(song => {
+        const rating = this.storageService.getRating(userId, song.id)?.rating;
+        const themes = this.storageService.getSongThemes(userId, song.id);
+        return {
+          ...song,
+          rating,
+          themes
+        };
+      });
+
+      this.exportOptions.playlistName = 'My Playlist';
+    };
+
+    void run();
   }
 
   get filteredSongs(): SongWithMetadata[] {

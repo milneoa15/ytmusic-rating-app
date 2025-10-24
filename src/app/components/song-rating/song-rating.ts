@@ -59,6 +59,8 @@ export class SongRating implements OnInit, AfterViewInit {
       return;
     }
 
+    await this.storageService.waitUntilReady();
+
     // Load themes
     const userId = this.authService.currentUserValue?.id;
     if (userId) {

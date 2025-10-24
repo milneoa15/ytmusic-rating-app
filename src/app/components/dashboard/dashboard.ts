@@ -33,7 +33,9 @@ export class Dashboard implements OnInit {
     }
 
     this.userName = user.displayName;
-    this.totalRatings = this.storageService.getAllRatings(user.id).length;
+    void this.storageService.waitUntilReady().then(() => {
+      this.totalRatings = this.storageService.getAllRatings(user.id).length;
+    });
   }
 
   importPlaylists(): void {
@@ -49,6 +51,8 @@ export class Dashboard implements OnInit {
     // Or get all songs and pass to rating component
     const user = this.authService.currentUserValue;
     if (!user) return;
+
+    await this.storageService.waitUntilReady();
     
     const songs = this.storageService.getImportedSongs(user.id);
     if (songs.length === 0) {

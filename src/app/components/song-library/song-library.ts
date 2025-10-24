@@ -159,29 +159,35 @@ export class SongLibrary implements OnInit, OnDestroy {
       return;
     }
 
-    // Load all imported songs
-    const songs = this.storageService.getImportedSongs(userId);
+    const run = async () => {
+      await this.storageService.waitUntilReady();
 
-    // Enrich songs with ratings and themes
-    this.allSongs = songs.map(song => {
-      const rating = this.storageService.getRating(userId, song.id);
-      const themeIds = this.storageService.getSongThemes(userId, song.id);
+      // Load all imported songs
+      const songs = this.storageService.getImportedSongs(userId);
 
-      return {
-        ...song,
-        rating: rating?.rating,
-        themes: themeIds
-      };
-    });
+      // Enrich songs with ratings and themes
+      this.allSongs = songs.map(song => {
+        const rating = this.storageService.getRating(userId, song.id);
+        const themeIds = this.storageService.getSongThemes(userId, song.id);
 
-    // Load themes
-    this.themes = this.storageService.getThemes(userId);
+        return {
+          ...song,
+          rating: rating?.rating,
+          themes: themeIds
+        };
+      });
 
-    // Load playlists
-    this.playlists = this.storageService.getLocalPlaylists(userId);
+      // Load themes
+      this.themes = this.storageService.getThemes(userId);
 
-    // Apply filters
-    this.applyFilters();
+      // Load playlists
+      this.playlists = this.storageService.getLocalPlaylists(userId);
+
+      // Apply filters
+      this.applyFilters();
+    };
+
+    void run();
   }
 
   get uniqueArtists(): string[] {

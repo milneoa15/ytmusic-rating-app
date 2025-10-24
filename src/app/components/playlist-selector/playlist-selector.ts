@@ -76,7 +76,13 @@ export class PlaylistSelector implements OnInit, OnDestroy {
   loadPlaylists(): void {
     const userId = this.authService.currentUserValue?.id;
     if (!userId) return;
-    this.playlists = this.storageService.getLocalPlaylists(userId);
+
+    const run = async () => {
+      await this.storageService.waitUntilReady();
+      this.playlists = this.storageService.getLocalPlaylists(userId);
+    };
+
+    void run();
   }
 
   togglePlaylist(playlistId: string): void {

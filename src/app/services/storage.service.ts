@@ -1,7 +1,11 @@
-import { Injectable } from '@angular/core';
+import { Injectable, OnDestroy } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { Song, SongRating } from '../models/song.model';
 import { Theme, SongTheme } from '../models/theme.model';
 import { LocalPlaylist, PlaylistFilters } from '../models/playlist.model';
+import { ApiService, LibraryResponse } from './api.service';
+import { AuthService } from './auth.service';
+import { environment } from '../../environments/environment';
 
 interface RatingsDatabase {
   [userId: string]: {
@@ -36,42 +40,302 @@ interface LocalPlaylistsDatabase {
 @Injectable({
   providedIn: 'root'
 })
-export class StorageService {
-  private readonly RATINGS_KEY = 'ytmusic_ratings';
-  private readonly CATEGORIES_KEY = 'ytmusic_categories';
-  private readonly SONG_CATEGORIES_KEY = 'ytmusic_song_categories';
-  private readonly IMPORTED_SONGS_KEY = 'ytmusic_imported_songs';
-  private readonly LOCAL_PLAYLISTS_KEY = 'ytmusic_local_playlists';
+export class StorageService implements OnDestroy {
+  private readonly remoteEnabled = environment.remoteStorageEnabled;
+  private ratingsDb: RatingsDatabase = {};
+  private themesDb: ThemesDatabase = {};
+  private songThemesDb: SongThemesDatabase = {};
+  private importedSongsDb: ImportedSongsDatabase = {};
+  private localPlaylistsDb: LocalPlaylistsDatabase = {};
+  private authSubscription?: Subscription;
+  private currentUserId: string | null = null;
+  private remoteQueue: Promise<void> = Promise.resolve();
+  private readyResolver: (() => void) | null = null;
+  private readyPromise: Promise<void> = Promise.resolve();
 
-  constructor() {
-    this.initializeStorage();
+  constructor(private apiService: ApiService, private authService: AuthService) {
+    if (this.remoteEnabled) {
+      this.resetReadyPromise(true);
+
+      this.authSubscription = this.authService.currentUser.subscribe(user => {
+        if (user) {
+          this.currentUserId = user.id;
+          this.resetReadyPromise();
+          this.schedule(() => this.syncFromRemote());
+        } else {
+          if (this.currentUserId) {
+            this.clearLocalDataForUser(this.currentUserId);
+          }
+          this.currentUserId = null;
+          this.resetReadyPromise(true);
+        }
+      });
+
+      const existingUser = this.authService.currentUserValue;
+      if (existingUser) {
+        this.currentUserId = existingUser.id;
+        this.resetReadyPromise();
+        this.schedule(() => this.syncFromRemote());
+      }
+    } else {
+      this.readyPromise = Promise.resolve();
+    }
   }
 
-  private initializeStorage(): void {
-    if (!localStorage.getItem(this.RATINGS_KEY)) {
-      localStorage.setItem(this.RATINGS_KEY, JSON.stringify({}));
+  ngOnDestroy(): void {
+    this.authSubscription?.unsubscribe();
+  }
+
+  async waitUntilReady(): Promise<void> {
+    await this.readyPromise;
+  }
+
+  private createReadyPromise(): { promise: Promise<void>; resolve: () => void } {
+    let resolver: () => void;
+    const promise = new Promise<void>(resolve => {
+      resolver = resolve;
+    });
+    return { promise, resolve: resolver! };
+  }
+
+  private resetReadyPromise(resolveImmediately = false): void {
+    const { promise, resolve } = this.createReadyPromise();
+    this.readyPromise = promise;
+    this.readyResolver = resolve;
+    if (resolveImmediately) {
+      this.markReady();
     }
-    if (!localStorage.getItem(this.CATEGORIES_KEY)) {
-      localStorage.setItem(this.CATEGORIES_KEY, JSON.stringify({}));
+  }
+
+  private markReady(): void {
+    if (this.readyResolver) {
+      this.readyResolver();
+      this.readyResolver = null;
     }
-    if (!localStorage.getItem(this.SONG_CATEGORIES_KEY)) {
-      localStorage.setItem(this.SONG_CATEGORIES_KEY, JSON.stringify({}));
+  }
+
+  private schedule(task: () => Promise<void>): void {
+    this.remoteQueue = this.remoteQueue
+      .then(() => task().catch(error => {
+        console.error('[StorageService] Remote sync error', error);
+      }))
+      .catch(error => {
+        console.error('[StorageService] Remote queue failure', error);
+      });
+  }
+
+  private enqueueAuthorizedTask(operation: (token: string) => Promise<void>): void {
+    if (!this.remoteEnabled) {
+      return;
     }
-    if (!localStorage.getItem(this.IMPORTED_SONGS_KEY)) {
-      localStorage.setItem(this.IMPORTED_SONGS_KEY, JSON.stringify({}));
+    this.schedule(async () => {
+      const token = await this.getAccessToken();
+      if (!token) {
+        return;
+      }
+      await operation(token);
+    });
+  }
+
+  private async getAccessToken(): Promise<string | null> {
+    const user = this.authService.currentUserValue;
+    if (!user) {
+      return null;
     }
-    if (!localStorage.getItem(this.LOCAL_PLAYLISTS_KEY)) {
-      localStorage.setItem(this.LOCAL_PLAYLISTS_KEY, JSON.stringify({}));
+
+    const tokenValid = await this.authService.ensureValidToken();
+    if (!tokenValid) {
+      return null;
     }
+
+    return this.authService.currentUserValue?.youtubeAccessToken ?? null;
+  }
+
+  private async syncFromRemote(): Promise<void> {
+    try {
+      const token = await this.getAccessToken();
+      if (!token || !this.currentUserId) {
+        this.markReady();
+        return;
+      }
+
+      const library = await this.apiService.getLibrary(token);
+      this.hydrateCache(this.currentUserId, library);
+    } catch (error) {
+      console.error('[StorageService] Failed to sync from Supabase', error);
+    } finally {
+      this.markReady();
+    }
+  }
+
+  private hydrateCache(userId: string, library: LibraryResponse): void {
+    this.applyRatings(userId, library);
+    this.applyImportedSongs(userId, library);
+    this.applyThemes(userId, library);
+    this.applySongThemes(userId, library);
+    this.applyPlaylists(userId, library);
+  }
+
+  private clearLocalDataForUser(userId: string): void {
+    const ratingsDb = this.getRatingsDatabase();
+    delete ratingsDb[userId];
+    this.saveRatingsDatabase(ratingsDb);
+
+    const themesDb = this.getThemesDatabase();
+    delete themesDb[userId];
+    this.saveThemesDatabase(themesDb);
+
+    const songThemesDb = this.getSongThemesDatabase();
+    delete songThemesDb[userId];
+    this.saveSongThemesDatabase(songThemesDb);
+
+    const importedDb = this.getImportedSongsDatabase();
+    delete importedDb[userId];
+    this.saveImportedSongsDatabase(importedDb);
+
+    const playlistsDb = this.getLocalPlaylistsDatabase();
+    delete playlistsDb[userId];
+    this.saveLocalPlaylistsDatabase(playlistsDb);
+  }
+
+  private isCurrentUser(userId: string): boolean {
+    return !!this.currentUserId && this.currentUserId === userId;
+  }
+
+  private applyRatings(userId: string, library: LibraryResponse): void {
+    const ratingsDb = this.getRatingsDatabase();
+    ratingsDb[userId] = {};
+    library.ratings.forEach(rating => {
+      ratingsDb[userId][rating.songId] = {
+        songId: rating.songId,
+        userId,
+        rating: rating.rating,
+        ratedAt: rating.ratedAt ? new Date(rating.ratedAt) : new Date()
+      };
+    });
+    this.saveRatingsDatabase(ratingsDb);
+  }
+
+  private applyImportedSongs(userId: string, library: LibraryResponse): void {
+    const importedDb = this.getImportedSongsDatabase();
+    importedDb[userId] = {};
+    library.songs.forEach(song => {
+      importedDb[userId][song.id] = {
+        id: song.id,
+        videoId: song.videoId ?? '',
+        title: song.title,
+        artist: song.artist ?? '',
+        album: song.album,
+        duration: song.duration,
+        thumbnailUrl: song.thumbnailUrl,
+        playlistId: song.playlistId
+      };
+    });
+    this.saveImportedSongsDatabase(importedDb);
+  }
+
+  private applyThemes(userId: string, library: LibraryResponse): void {
+    const themesDb = this.getThemesDatabase();
+    themesDb[userId] = {};
+    library.themes.forEach(theme => {
+      themesDb[userId][theme.id] = {
+        ...theme,
+        createdAt: theme.createdAt ? new Date(theme.createdAt) : new Date()
+      };
+    });
+    this.saveThemesDatabase(themesDb);
+  }
+
+  private applySongThemes(userId: string, library: LibraryResponse): void {
+    const songThemesDb = this.getSongThemesDatabase();
+    const mapping: { [songId: string]: string[] } = {};
+    library.songThemes.forEach(link => {
+      if (!mapping[link.songId]) {
+        mapping[link.songId] = [];
+      }
+      mapping[link.songId].push(link.themeId);
+    });
+    songThemesDb[userId] = mapping;
+    this.saveSongThemesDatabase(songThemesDb);
+  }
+
+  private applyPlaylists(userId: string, library: LibraryResponse): void {
+    const playlistsDb = this.getLocalPlaylistsDatabase();
+    playlistsDb[userId] = {};
+    library.playlists.forEach(playlist => {
+      playlistsDb[userId][playlist.id] = {
+        ...playlist,
+        createdAt: playlist.createdAt ? new Date(playlist.createdAt) : new Date(),
+        updatedAt: playlist.updatedAt ? new Date(playlist.updatedAt) : new Date(),
+        songIds: playlist.songIds ?? []
+      };
+    });
+    this.saveLocalPlaylistsDatabase(playlistsDb);
+  }
+
+  private upsertThemeLocally(userId: string, theme: Theme): void {
+    const themesDb = this.getThemesDatabase();
+    if (!themesDb[userId]) {
+      themesDb[userId] = {};
+    }
+
+    themesDb[userId][theme.id] = {
+      ...theme,
+      createdAt: theme.createdAt instanceof Date ? theme.createdAt : new Date(theme.createdAt)
+    };
+    this.saveThemesDatabase(themesDb);
+  }
+
+  private persistThemeToRemote(userId: string, theme: Theme): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+
+    this.enqueueAuthorizedTask(async token => {
+      const saved = await this.apiService.saveTheme(token, theme);
+      this.upsertThemeLocally(userId, {
+        ...saved,
+        createdAt: saved.createdAt instanceof Date ? saved.createdAt : new Date(saved.createdAt)
+      });
+    });
+  }
+
+  private upsertLocalPlaylist(userId: string, playlist: LocalPlaylist): void {
+    const playlistsDb = this.getLocalPlaylistsDatabase();
+    if (!playlistsDb[userId]) {
+      playlistsDb[userId] = {};
+    }
+
+    playlistsDb[userId][playlist.id] = {
+      ...playlist,
+      songIds: [...(playlist.songIds ?? [])],
+      createdAt: playlist.createdAt instanceof Date ? playlist.createdAt : new Date(playlist.createdAt),
+      updatedAt: playlist.updatedAt instanceof Date ? playlist.updatedAt : new Date(playlist.updatedAt)
+    };
+    this.saveLocalPlaylistsDatabase(playlistsDb);
+  }
+
+  private persistPlaylistToRemote(userId: string, playlist: LocalPlaylist): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+
+    this.enqueueAuthorizedTask(async token => {
+      const saved = await this.apiService.savePlaylist(token, playlist);
+      this.upsertLocalPlaylist(userId, {
+        ...saved,
+        createdAt: saved.createdAt instanceof Date ? saved.createdAt : new Date(saved.createdAt),
+        updatedAt: saved.updatedAt instanceof Date ? saved.updatedAt : new Date(saved.updatedAt)
+      });
+    });
   }
 
   private getRatingsDatabase(): RatingsDatabase {
-    const data = localStorage.getItem(this.RATINGS_KEY);
-    return data ? JSON.parse(data) : {};
+    return this.ratingsDb;
   }
 
   private saveRatingsDatabase(db: RatingsDatabase): void {
-    localStorage.setItem(this.RATINGS_KEY, JSON.stringify(db));
+    this.ratingsDb = db;
   }
 
   // Save or update a rating for a song
@@ -91,6 +355,18 @@ export class StorageService {
 
     db[userId][songId] = songRating;
     this.saveRatingsDatabase(db);
+
+    if (this.remoteEnabled && this.isCurrentUser(userId)) {
+      const songForRemote =
+        this.getImportedSong(userId, songId) ?? {
+          id: songId,
+          videoId: songId,
+          title: 'Unknown Song',
+          artist: ''
+        };
+
+      this.enqueueAuthorizedTask(token => this.apiService.saveRating(token, songForRemote, rating));
+    }
   }
 
   // Get a specific rating
@@ -118,6 +394,10 @@ export class StorageService {
     if (db[userId]?.[songId]) {
       delete db[userId][songId];
       this.saveRatingsDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId)) {
+        this.enqueueAuthorizedTask(token => this.apiService.deleteRating(token, songId));
+      }
     }
   }
 
@@ -125,30 +405,30 @@ export class StorageService {
   clearUserRatings(userId: string): void {
     const db = this.getRatingsDatabase();
     if (db[userId]) {
+      const songIds = Object.keys(db[userId]);
       delete db[userId];
       this.saveRatingsDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId) && songIds.length > 0) {
+        this.enqueueAuthorizedTask(async token => {
+          await Promise.all(songIds.map(id => this.apiService.deleteRating(token, id)));
+        });
+      }
     }
   }
 
   // ============= THEME MANAGEMENT =============
 
   private getThemesDatabase(): ThemesDatabase {
-    const data = localStorage.getItem(this.CATEGORIES_KEY);
-    return data ? JSON.parse(data) : {};
+    return this.themesDb;
   }
 
   private saveThemesDatabase(db: ThemesDatabase): void {
-    localStorage.setItem(this.CATEGORIES_KEY, JSON.stringify(db));
+    this.themesDb = db;
   }
 
   // Create a new theme
   createTheme(userId: string, name: string, color: string): Theme {
-    const db = this.getThemesDatabase();
-    
-    if (!db[userId]) {
-      db[userId] = {};
-    }
-
     const theme: Theme = {
       id: `theme_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name,
@@ -157,8 +437,8 @@ export class StorageService {
       createdAt: new Date()
     };
 
-    db[userId][theme.id] = theme;
-    this.saveThemesDatabase(db);
+    this.upsertThemeLocally(userId, theme);
+    this.persistThemeToRemote(userId, theme);
     return theme;
   }
 
@@ -182,6 +462,7 @@ export class StorageService {
       db[userId][themeId].name = name;
       db[userId][themeId].color = color;
       this.saveThemesDatabase(db);
+      this.persistThemeToRemote(userId, db[userId][themeId]);
     }
   }
 
@@ -191,6 +472,9 @@ export class StorageService {
     if (db[userId]?.[themeId]) {
       delete db[userId][themeId];
       this.saveThemesDatabase(db);
+      if (this.remoteEnabled && this.isCurrentUser(userId)) {
+        this.enqueueAuthorizedTask(token => this.apiService.deleteTheme(token, themeId));
+      }
       
       // Also remove this theme from all songs
       this.removeThemeFromAllSongs(userId, themeId);
@@ -200,12 +484,11 @@ export class StorageService {
   // ============= SONG-THEME ASSIGNMENTS =============
 
   private getSongThemesDatabase(): SongThemesDatabase {
-    const data = localStorage.getItem(this.SONG_CATEGORIES_KEY);
-    return data ? JSON.parse(data) : {};
+    return this.songThemesDb;
   }
 
   private saveSongThemesDatabase(db: SongThemesDatabase): void {
-    localStorage.setItem(this.SONG_CATEGORIES_KEY, JSON.stringify(db));
+    this.songThemesDb = db;
   }
 
   // Assign a theme to a song
@@ -222,6 +505,10 @@ export class StorageService {
     if (!db[userId][songId].includes(themeId)) {
       db[userId][songId].push(themeId);
       this.saveSongThemesDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId)) {
+        this.enqueueAuthorizedTask(token => this.apiService.assignTheme(token, songId, themeId));
+      }
     }
   }
 
@@ -231,6 +518,10 @@ export class StorageService {
     if (db[userId]?.[songId]) {
       db[userId][songId] = db[userId][songId].filter((id: string) => id !== themeId);
       this.saveSongThemesDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId)) {
+        this.enqueueAuthorizedTask(token => this.apiService.removeTheme(token, songId, themeId));
+      }
     }
   }
 
@@ -269,12 +560,11 @@ export class StorageService {
   // ============= IMPORTED SONGS MANAGEMENT =============
 
   private getImportedSongsDatabase(): ImportedSongsDatabase {
-    const data = localStorage.getItem(this.IMPORTED_SONGS_KEY);
-    return data ? JSON.parse(data) : {};
+    return this.importedSongsDb;
   }
 
   private saveImportedSongsDatabase(db: ImportedSongsDatabase): void {
-    localStorage.setItem(this.IMPORTED_SONGS_KEY, JSON.stringify(db));
+    this.importedSongsDb = db;
   }
 
   // Save imported songs (from selected playlists)
@@ -290,6 +580,10 @@ export class StorageService {
     });
 
     this.saveImportedSongsDatabase(db);
+
+    if (this.remoteEnabled && this.isCurrentUser(userId) && songs.length > 0) {
+      this.enqueueAuthorizedTask(token => this.apiService.saveImportedSongs(token, songs));
+    }
   }
 
   // Get all imported songs for a user
@@ -311,6 +605,10 @@ export class StorageService {
     if (db[userId]?.[songId]) {
       delete db[userId][songId];
       this.saveImportedSongsDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId)) {
+        this.enqueueAuthorizedTask(token => this.apiService.removeImportedSong(token, songId));
+      }
     }
   }
 
@@ -318,8 +616,15 @@ export class StorageService {
   clearImportedSongs(userId: string): void {
     const db = this.getImportedSongsDatabase();
     if (db[userId]) {
+      const songIds = Object.keys(db[userId]);
       delete db[userId];
       this.saveImportedSongsDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId) && songIds.length > 0) {
+        this.enqueueAuthorizedTask(async token => {
+          await Promise.all(songIds.map(id => this.apiService.removeImportedSong(token, id)));
+        });
+      }
     }
   }
 
@@ -341,12 +646,11 @@ export class StorageService {
   // ============= LOCAL PLAYLIST MANAGEMENT =============
 
   private getLocalPlaylistsDatabase(): LocalPlaylistsDatabase {
-    const data = localStorage.getItem(this.LOCAL_PLAYLISTS_KEY);
-    return data ? JSON.parse(data) : {};
+    return this.localPlaylistsDb;
   }
 
   private saveLocalPlaylistsDatabase(db: LocalPlaylistsDatabase): void {
-    localStorage.setItem(this.LOCAL_PLAYLISTS_KEY, JSON.stringify(db));
+    this.localPlaylistsDb = db;
   }
 
   // Create a new local playlist
@@ -356,12 +660,6 @@ export class StorageService {
     description?: string,
     filters?: PlaylistFilters
   ): LocalPlaylist {
-    const db = this.getLocalPlaylistsDatabase();
-
-    if (!db[userId]) {
-      db[userId] = {};
-    }
-
     const playlist: LocalPlaylist = {
       id: `playlist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       userId,
@@ -373,8 +671,8 @@ export class StorageService {
       updatedAt: new Date()
     };
 
-    db[userId][playlist.id] = playlist;
-    this.saveLocalPlaylistsDatabase(db);
+    this.upsertLocalPlaylist(userId, playlist);
+    this.persistPlaylistToRemote(userId, playlist);
     return playlist;
   }
 
@@ -405,13 +703,15 @@ export class StorageService {
     updates: Partial<Omit<LocalPlaylist, 'id' | 'userId' | 'createdAt'>>
   ): void {
     const db = this.getLocalPlaylistsDatabase();
-    if (db[userId]?.[playlistId]) {
-      db[userId][playlistId] = {
-        ...db[userId][playlistId],
+    const existing = db[userId]?.[playlistId];
+    if (existing) {
+      const updated: LocalPlaylist = {
+        ...existing,
         ...updates,
         updatedAt: new Date()
       };
-      this.saveLocalPlaylistsDatabase(db);
+      this.upsertLocalPlaylist(userId, updated);
+      this.persistPlaylistToRemote(userId, updated);
     }
   }
 
@@ -421,6 +721,10 @@ export class StorageService {
     if (db[userId]?.[playlistId]) {
       delete db[userId][playlistId];
       this.saveLocalPlaylistsDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId)) {
+        this.enqueueAuthorizedTask(token => this.apiService.deletePlaylist(token, playlistId));
+      }
     }
   }
 
@@ -433,6 +737,7 @@ export class StorageService {
         playlist.songIds.push(songId);
         playlist.updatedAt = new Date();
         this.saveLocalPlaylistsDatabase(db);
+        this.persistPlaylistToRemote(userId, playlist);
       }
     }
   }
@@ -449,6 +754,7 @@ export class StorageService {
       });
       playlist.updatedAt = new Date();
       this.saveLocalPlaylistsDatabase(db);
+      this.persistPlaylistToRemote(userId, playlist);
     }
   }
 
@@ -460,6 +766,7 @@ export class StorageService {
       playlist.songIds = playlist.songIds.filter(id => id !== songId);
       playlist.updatedAt = new Date();
       this.saveLocalPlaylistsDatabase(db);
+      this.persistPlaylistToRemote(userId, playlist);
     }
   }
 
@@ -478,8 +785,15 @@ export class StorageService {
   clearLocalPlaylists(userId: string): void {
     const db = this.getLocalPlaylistsDatabase();
     if (db[userId]) {
+      const playlistIds = Object.keys(db[userId]);
       delete db[userId];
       this.saveLocalPlaylistsDatabase(db);
+
+      if (this.remoteEnabled && this.isCurrentUser(userId) && playlistIds.length > 0) {
+        this.enqueueAuthorizedTask(async token => {
+          await Promise.all(playlistIds.map(id => this.apiService.deletePlaylist(token, id)));
+        });
+      }
     }
   }
 
@@ -491,6 +805,7 @@ export class StorageService {
       playlist.starred = !playlist.starred;
       playlist.updatedAt = new Date();
       this.saveLocalPlaylistsDatabase(db);
+      this.persistPlaylistToRemote(userId, playlist);
     }
   }
 }

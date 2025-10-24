@@ -47,3 +47,4 @@ Thumbs.db
 /src/environments/environment.development.ts
 # Keep the production template
 !/src/environments/environment.prod.ts
+.vercel

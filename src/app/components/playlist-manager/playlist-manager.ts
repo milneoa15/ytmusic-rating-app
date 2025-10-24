@@ -66,12 +66,16 @@ export class PlaylistManager implements OnInit {
       return;
     }
 
-    this.loadLocalPlaylists(userId);
+    const run = async () => {
+      await this.storageService.waitUntilReady();
+      this.loadLocalPlaylists(userId);
 
-    // If import tab is active, load YouTube playlists
-    if (this.activeTab === 'import') {
-      this.loadYoutubePlaylists();
-    }
+      if (this.activeTab === 'import') {
+        this.loadYoutubePlaylists();
+      }
+    };
+
+    void run();
   }
 
   switchTab(tab: TabType): void {
@@ -85,7 +89,12 @@ export class PlaylistManager implements OnInit {
 
   // Load local playlists
   loadLocalPlaylists(userId: string): void {
-    this.localPlaylists = this.storageService.getLocalPlaylists(userId);
+    const run = async () => {
+      await this.storageService.waitUntilReady();
+      this.localPlaylists = this.storageService.getLocalPlaylists(userId);
+    };
+
+    void run();
   }
 
   // Load YouTube playlists
@@ -161,6 +170,8 @@ export class PlaylistManager implements OnInit {
 
     const userId = this.authService.currentUserValue?.id;
     if (!userId) return;
+
+    await this.storageService.waitUntilReady();
 
     this.isExporting = true;
     this.exportedPlaylists.clear();
