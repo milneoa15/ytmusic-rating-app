@@ -8,7 +8,6 @@ interface PlaylistPayload {
   name: string;
   description?: string;
   songIds?: string[];
-  filters?: Record<string, unknown>;
   starred?: boolean;
 }
 
@@ -53,7 +52,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             id,
             name,
             description,
-            filters,
             starred,
             created_at,
             updated_at,
@@ -77,7 +75,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         userId: auth.userId,
         name: item.name,
         description: item.description ?? undefined,
-        filters: item.filters ?? undefined,
         starred: item.starred ?? false,
         songIds:
           item.playlist_songs
@@ -103,7 +100,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         user_id: auth.userId,
         name: playlist.name,
         description: playlist.description ?? null,
-        filters: playlist.filters ?? {},
         starred: playlist.starred ?? false,
         updated_at: new Date().toISOString()
       };
@@ -111,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const { data, error } = await supabase
         .from('playlists')
         .upsert(payload, { onConflict: 'id' })
-        .select('id, name, description, filters, starred, created_at, updated_at')
+        .select('id, name, description, starred, created_at, updated_at')
         .single();
 
       if (error || !data) {
@@ -126,7 +122,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           userId: auth.userId,
           name: data.name,
           description: data.description ?? undefined,
-          filters: data.filters ?? undefined,
           starred: data.starred ?? false,
           songIds: playlist.songIds ?? [],
           createdAt: data.created_at,

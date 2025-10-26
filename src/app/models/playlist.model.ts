@@ -18,14 +18,13 @@ export interface LocalPlaylist {
   name: string;
   description?: string;
   songIds: string[]; // Array of song IDs in this playlist
-  filters?: PlaylistFilters; // Optional filters for smart playlists
   createdAt: Date;
   updatedAt: Date;
   thumbnailUrl?: string; // Could be from first song or custom
   starred?: boolean; // Whether the playlist is starred/pinned
 }
 
-// Filters for smart playlists
+// Filters for playlist creation/editing (used temporarily to select songs, not stored)
 export interface PlaylistFilters {
   minRating?: number;
   maxRating?: number;

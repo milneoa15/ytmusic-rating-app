@@ -727,11 +727,11 @@ export class SongLibrary implements OnInit, OnDestroy {
       return;
     }
 
+    // Create playlist without storing filters (filters are just for selecting songs at creation time)
     const playlist = this.storageService.createLocalPlaylist(
       userId,
       this.newPlaylistName.trim(),
-      this.newPlaylistDescription.trim() || undefined,
-      this.createMode === 'advanced' ? this.newPlaylistFilters : undefined
+      this.newPlaylistDescription.trim() || undefined
     );
 
     if (songIds.length > 0) {
@@ -908,7 +908,10 @@ export class SongLibrary implements OnInit, OnDestroy {
     this.router.navigate(['/login']);
   }
 
-  async deleteSong(song: Song): Promise<void> {
+  async deleteSong(song: Song, event?: Event): Promise<void> {
+    if (event) {
+      event.stopPropagation();
+    }
     const confirmed = await this.modalService.confirm(
       'Delete Song',
       `Delete "${song.title}" by ${song.artist}? This will remove it from your library, including its rating and theme assignments.`,
@@ -921,10 +924,58 @@ export class SongLibrary implements OnInit, OnDestroy {
     const userId = this.authService.currentUserValue?.id;
     if (!userId) return;
 
+    // Remove the song from all playlists that contain it
+    const allPlaylists = this.storageService.getLocalPlaylists(userId);
+    allPlaylists.forEach(playlist => {
+      if (playlist.songIds.includes(song.id)) {
+        this.storageService.removeSongFromLocalPlaylist(userId, playlist.id, song.id);
+      }
+    });
+
+    // Delete the song from the library
     this.storageService.deleteSong(userId, song.id);
     
     // Remove from local arrays
     this.allSongs = this.allSongs.filter(s => s.id !== song.id);
+    
+    // Reload playlists to get updated counts
+    this.playlists = this.storageService.getLocalPlaylists(userId);
+    
+    this.closeSongMenu();
+    this.applyFilters();
+  }
+
+  async removeFromPlaylist(song: Song, event: Event): Promise<void> {
+    event.stopPropagation();
+    
+    if (!this.currentPlaylist) return;
+    
+    const confirmed = await this.modalService.confirm(
+      'Remove from Playlist',
+      `Remove "${song.title}" by ${song.artist} from "${this.currentPlaylist.name}"?`,
+      'Remove',
+      'Cancel'
+    );
+
+    if (!confirmed) return;
+
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId) return;
+
+    // Update the playlist by removing the song
+    const updatedSongIds = this.currentPlaylist.songIds.filter(id => id !== song.id);
+    
+    this.storageService.updateLocalPlaylist(userId, this.currentPlaylist.id, {
+      songIds: updatedSongIds
+    });
+    
+    // Update currentPlaylist reference
+    const updatedPlaylist = this.storageService.getLocalPlaylist(userId, this.currentPlaylist.id);
+    if (updatedPlaylist) {
+      this.currentPlaylist = updatedPlaylist;
+    }
+    
+    this.closeSongMenu();
     this.applyFilters();
   }
 
@@ -967,12 +1018,27 @@ export class SongLibrary implements OnInit, OnDestroy {
     const userId = this.authService.currentUserValue?.id;
     if (!userId) return;
 
+    // Get all playlists once for efficiency
+    const allPlaylists = this.storageService.getLocalPlaylists(userId);
+
     this.selectedSongs.forEach(songId => {
+      // Remove the song from all playlists that contain it
+      allPlaylists.forEach(playlist => {
+        if (playlist.songIds.includes(songId)) {
+          this.storageService.removeSongFromLocalPlaylist(userId, playlist.id, songId);
+        }
+      });
+      
+      // Delete the song from the library
       this.storageService.deleteSong(userId, songId);
     });
 
     this.allSongs = this.allSongs.filter(s => !this.selectedSongs.has(s.id));
     this.selectedSongs.clear();
+    
+    // Reload playlists to get updated counts
+    this.playlists = this.storageService.getLocalPlaylists(userId);
+    
     this.applyFilters();
   }
 

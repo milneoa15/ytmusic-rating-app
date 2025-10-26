@@ -2,7 +2,7 @@ import { Injectable, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { Song, SongRating } from '../models/song.model';
 import { Theme, SongTheme } from '../models/theme.model';
-import { LocalPlaylist, PlaylistFilters } from '../models/playlist.model';
+import { LocalPlaylist } from '../models/playlist.model';
 import { ApiService, LibraryResponse } from './api.service';
 import { AuthService } from './auth.service';
 import { environment } from '../../environments/environment';
@@ -1213,8 +1213,7 @@ export class StorageService implements OnDestroy {
   createLocalPlaylist(
     userId: string,
     name: string,
-    description?: string,
-    filters?: PlaylistFilters
+    description?: string
   ): LocalPlaylist {
     const playlist: LocalPlaylist = {
       id: `playlist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1222,7 +1221,6 @@ export class StorageService implements OnDestroy {
       name,
       description,
       songIds: [],
-      filters,
       createdAt: new Date(),
       updatedAt: new Date()
     };

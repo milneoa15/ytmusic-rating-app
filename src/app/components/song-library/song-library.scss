@@ -1071,41 +1071,6 @@
   }
 }
 
-.delete-song-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem;
-  color: var(--text-secondary);
-  transition: color 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &:hover {
-    color: var(--red-primary);
-  }
-
-  .select-mode & {
-    visibility: hidden;
-  }
-
-  .grid-view & {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background: rgba(0, 0, 0, 0.7);
-    border-radius: 50%;
-    padding: 0.4rem;
-    color: var(--text-primary);
-
-    &:hover {
-      background: rgba(0, 0, 0, 0.9);
-      color: var(--red-primary);
-    }
-  }
-}
-
 .song-menu-container {
   position: relative;
 
@@ -1156,7 +1121,7 @@
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      font-size: 0.95rem;
+      font-size: 0.85rem;
       transition: background 0.2s ease;
 
       .menu-icon {
@@ -1176,6 +1141,14 @@
 
       &:not(:last-child) {
         border-bottom: 1px solid var(--border-color);
+      }
+
+      &.delete-item {
+        color: var(--red-primary);
+
+        &:hover:not(:disabled) {
+          background: rgba(198, 40, 40, 0.1);
+        }
       }
     }
   }
