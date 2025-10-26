@@ -52,15 +52,43 @@ export class StorageService implements OnDestroy {
   private remoteQueue: Promise<void> = Promise.resolve();
   private readyResolver: (() => void) | null = null;
   private readyPromise: Promise<void> = Promise.resolve();
+  private pendingRatingUpdates: Map<string, { song: Song; rating: number }> = new Map();
+  private pendingRatingDeletes: Set<string> = new Set();
+  private ratingFlushHandle: any = null;
+  private readonly ratingFlushDelay = 120;
+  private readonly ratingImmediateFlushThreshold = 12;
+  private readonly ratingUpdatesStorageKey = 'ytmusic_pending_rating_updates';
+  private readonly ratingDeletesStorageKey = 'ytmusic_pending_rating_deletes';
+  private readonly ratingUpdatesInflightKey = 'ytmusic_inflight_rating_updates';
+  private readonly ratingDeletesInflightKey = 'ytmusic_inflight_rating_deletes';
+  private ratingInflightSnapshot: Array<{ song: Song; rating: number }> = [];
+  private ratingDeleteInflightSnapshot: string[] = [];
+  private readonly visibilityListener = () => this.handleVisibilityChange();
+  private readonly beforeUnloadListener = () => this.handleBeforeUnload();
+  private pendingThemeAssignments: Set<string> = new Set();
+  private pendingThemeRemovals: Set<string> = new Set();
+  private themeFlushHandle: any = null;
+  private readonly themeFlushDelay = 200;
+  private pendingImportedSongDeletes: Set<string> = new Set();
+  private importedDeleteFlushHandle: any = null;
+  private readonly importedDeleteFlushDelay = 200;
+  private pendingPlaylistDeletes: Set<string> = new Set();
+  private playlistDeleteFlushHandle: any = null;
+  private readonly playlistDeleteFlushDelay = 200;
 
   constructor(private apiService: ApiService, private authService: AuthService) {
     if (this.remoteEnabled) {
       this.resetReadyPromise(true);
+      if (typeof window !== 'undefined') {
+        window.addEventListener('visibilitychange', this.visibilityListener);
+        window.addEventListener('beforeunload', this.beforeUnloadListener);
+      }
 
       this.authSubscription = this.authService.currentUser.subscribe(user => {
         if (user) {
           this.currentUserId = user.id;
           this.resetReadyPromise();
+          this.restorePendingRatingsForUser(user.id);
           this.schedule(() => this.syncFromRemote());
         } else {
           if (this.currentUserId) {
@@ -75,6 +103,7 @@ export class StorageService implements OnDestroy {
       if (existingUser) {
         this.currentUserId = existingUser.id;
         this.resetReadyPromise();
+        this.restorePendingRatingsForUser(existingUser.id);
         this.schedule(() => this.syncFromRemote());
       }
     } else {
@@ -84,6 +113,18 @@ export class StorageService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.authSubscription?.unsubscribe();
+    this.cancelRatingFlushTimer();
+    this.flushPendingRatings(true);
+    this.cancelThemeFlushTimer();
+    this.flushPendingSongThemes(true);
+    this.cancelImportedDeleteFlushTimer();
+    this.flushPendingImportedSongDeletes(true);
+    this.cancelPlaylistDeleteFlushTimer();
+    this.flushPendingPlaylistDeletes(true);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('visibilitychange', this.visibilityListener);
+      window.removeEventListener('beforeunload', this.beforeUnloadListener);
+    }
   }
 
   async waitUntilReady(): Promise<void> {
@@ -96,6 +137,161 @@ export class StorageService implements OnDestroy {
       resolver = resolve;
     });
     return { promise, resolve: resolver! };
+  }
+
+  private readPersistedQueue<T>(key: string): Record<string, T[]> {
+    if (typeof localStorage === 'undefined') {
+      return {};
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw) as Record<string, T[]>;
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch (error) {
+      console.error('[StorageService] Failed to read persisted queue', { key, error });
+      return {};
+    }
+  }
+
+  private writePersistedQueue<T>(key: string, value: Record<string, T[]>): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+    const sanitized = Object.entries(value).reduce<Record<string, T[]>>((acc, [userId, entries]) => {
+      if (entries && entries.length > 0) {
+        acc[userId] = entries;
+      }
+      return acc;
+    }, {});
+    if (Object.keys(sanitized).length === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify(sanitized));
+    }
+  }
+
+  private persistRatingPendingState(): void {
+    if (!this.remoteEnabled || !this.currentUserId) {
+      return;
+    }
+    const updatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesStorageKey);
+    updatesByUser[this.currentUserId] = Array.from(this.pendingRatingUpdates.values()).map(entry => ({
+      song: entry.song,
+      rating: entry.rating
+    }));
+    this.writePersistedQueue(this.ratingUpdatesStorageKey, updatesByUser);
+
+    const deletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesStorageKey);
+    deletesByUser[this.currentUserId] = Array.from(this.pendingRatingDeletes.values()).map(songId => ({ songId }));
+    this.writePersistedQueue(this.ratingDeletesStorageKey, deletesByUser);
+  }
+
+  private persistRatingInflightState(
+    updates: Array<{ song: Song; rating: number }>,
+    deletes: string[]
+  ): void {
+    if (!this.remoteEnabled || !this.currentUserId) {
+      return;
+    }
+    this.ratingInflightSnapshot = updates;
+    this.ratingDeleteInflightSnapshot = deletes;
+
+    const updatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesInflightKey);
+    updatesByUser[this.currentUserId] = updates;
+    this.writePersistedQueue(this.ratingUpdatesInflightKey, updatesByUser);
+
+    const deletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesInflightKey);
+    deletesByUser[this.currentUserId] = deletes.map(songId => ({ songId }));
+    this.writePersistedQueue(this.ratingDeletesInflightKey, deletesByUser);
+  }
+
+  private clearRatingInflightState(userId?: string): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+    const targetUser = userId ?? this.currentUserId;
+    if (!targetUser) {
+      return;
+    }
+    this.ratingInflightSnapshot = [];
+    this.ratingDeleteInflightSnapshot = [];
+
+    const updatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesInflightKey);
+    delete updatesByUser[targetUser];
+    this.writePersistedQueue(this.ratingUpdatesInflightKey, updatesByUser);
+
+    const deletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesInflightKey);
+    delete deletesByUser[targetUser];
+    this.writePersistedQueue(this.ratingDeletesInflightKey, deletesByUser);
+  }
+
+  private restorePendingRatingsForUser(userId: string): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+
+    const pendingUpdatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesStorageKey);
+    const pendingDeletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesStorageKey);
+    const inflightUpdatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesInflightKey);
+    const inflightDeletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesInflightKey);
+
+    const restoreUpdates = [
+      ...(pendingUpdatesByUser[userId] ?? []),
+      ...(inflightUpdatesByUser[userId] ?? [])
+    ];
+    const restoreDeletes = [
+      ...(pendingDeletesByUser[userId]?.map(entry => entry.songId) ?? []),
+      ...(inflightDeletesByUser[userId]?.map(entry => entry.songId) ?? [])
+    ];
+
+    restoreUpdates.forEach(entry => {
+      if (entry?.song?.id) {
+        this.pendingRatingUpdates.set(entry.song.id, { song: entry.song, rating: entry.rating });
+      }
+    });
+
+    restoreDeletes.forEach(songId => {
+      if (songId) {
+        this.pendingRatingDeletes.add(songId);
+      }
+    });
+
+    // Clear inflight entries now that they're rehydrated into the pending queue.
+    this.clearRatingInflightState(userId);
+    this.persistRatingPendingState();
+
+    if (this.pendingRatingUpdates.size > 0 || this.pendingRatingDeletes.size > 0) {
+      this.scheduleRatingFlush(true);
+    }
+  }
+
+  private removeRatingStateForUser(userId: string): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+    const updatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesStorageKey);
+    delete updatesByUser[userId];
+    this.writePersistedQueue(this.ratingUpdatesStorageKey, updatesByUser);
+
+    const deletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesStorageKey);
+    delete deletesByUser[userId];
+    this.writePersistedQueue(this.ratingDeletesStorageKey, deletesByUser);
+
+    const inflightUpdatesByUser = this.readPersistedQueue<{ song: Song; rating: number }>(this.ratingUpdatesInflightKey);
+    delete inflightUpdatesByUser[userId];
+    this.writePersistedQueue(this.ratingUpdatesInflightKey, inflightUpdatesByUser);
+
+    const inflightDeletesByUser = this.readPersistedQueue<{ songId: string }>(this.ratingDeletesInflightKey);
+    delete inflightDeletesByUser[userId];
+    this.writePersistedQueue(this.ratingDeletesInflightKey, inflightDeletesByUser);
+
+    if (this.currentUserId === userId) {
+      this.ratingInflightSnapshot = [];
+      this.ratingDeleteInflightSnapshot = [];
+    }
   }
 
   private resetReadyPromise(resolveImmediately = false): void {
@@ -124,17 +320,370 @@ export class StorageService implements OnDestroy {
       });
   }
 
-  private enqueueAuthorizedTask(operation: (token: string) => Promise<void>): void {
+  private enqueueAuthorizedTask(
+    operation: (token: string) => Promise<void>,
+    onTokenUnavailable?: () => void
+  ): void {
     if (!this.remoteEnabled) {
       return;
     }
     this.schedule(async () => {
       const token = await this.getAccessToken();
       if (!token) {
+        onTokenUnavailable?.();
         return;
       }
       await operation(token);
     });
+  }
+
+  private scheduleRatingFlush(immediate = false): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+    const pendingCount = this.pendingRatingUpdates.size + this.pendingRatingDeletes.size;
+    if (immediate || pendingCount >= this.ratingImmediateFlushThreshold) {
+      this.flushPendingRatings();
+      return;
+    }
+    if (this.ratingFlushHandle) {
+      clearTimeout(this.ratingFlushHandle);
+    }
+    this.ratingFlushHandle = setTimeout(() => {
+      this.ratingFlushHandle = null;
+      this.flushPendingRatings();
+    }, this.ratingFlushDelay);
+  }
+
+  private cancelRatingFlushTimer(): void {
+    if (this.ratingFlushHandle) {
+      clearTimeout(this.ratingFlushHandle);
+      this.ratingFlushHandle = null;
+    }
+  }
+
+  private queueRatingUpsert(userId: string, song: Song, rating: number): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+    this.pendingRatingDeletes.delete(song.id);
+    this.pendingRatingUpdates.set(song.id, { song, rating });
+    this.persistRatingPendingState();
+    this.scheduleRatingFlush();
+  }
+
+  private queueRatingDelete(userId: string, songId: string): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+    this.pendingRatingUpdates.delete(songId);
+    this.pendingRatingDeletes.add(songId);
+    this.persistRatingPendingState();
+    this.scheduleRatingFlush();
+  }
+
+  private flushPendingRatings(force = false): void {
+    if (!this.remoteEnabled) {
+      this.pendingRatingUpdates.clear();
+      this.pendingRatingDeletes.clear();
+      this.persistRatingPendingState();
+      return;
+    }
+
+    if (this.ratingFlushHandle) {
+      this.cancelRatingFlushTimer();
+    }
+
+    if (!force && this.pendingRatingUpdates.size === 0 && this.pendingRatingDeletes.size === 0) {
+      return;
+    }
+
+    const updates = Array.from(this.pendingRatingUpdates.entries()).map(([id, entry]) => ({
+      song: entry.song,
+      rating: entry.rating
+    }));
+    const deletes = Array.from(this.pendingRatingDeletes.values());
+
+    if (updates.length === 0 && deletes.length === 0) {
+      this.pendingRatingUpdates.clear();
+      this.pendingRatingDeletes.clear();
+      this.persistRatingPendingState();
+      return;
+    }
+
+    this.persistRatingInflightState(updates, deletes);
+    this.pendingRatingUpdates.clear();
+    this.pendingRatingDeletes.clear();
+    this.persistRatingPendingState();
+
+    const requeueBatch = () => {
+      updates.forEach(update => {
+        this.pendingRatingUpdates.set(update.song.id, {
+          song: update.song,
+          rating: update.rating
+        });
+      });
+      deletes.forEach(songId => {
+        this.pendingRatingDeletes.add(songId);
+      });
+      this.persistRatingPendingState();
+      this.clearRatingInflightState();
+      this.scheduleRatingFlush();
+    };
+
+    this.enqueueAuthorizedTask(
+      async token => {
+        try {
+          await this.apiService.saveRatingsBulk(token, updates, deletes);
+          this.clearRatingInflightState();
+        } catch (error) {
+          console.error('[StorageService] Failed to flush rating batch', error);
+          requeueBatch();
+          throw error;
+        }
+      },
+      () => {
+        requeueBatch();
+      }
+    );
+  }
+
+  private themeKey(songId: string, themeId: string): string {
+    return `${songId}::${themeId}`;
+  }
+
+  private splitThemeKey(key: string): { songId: string; themeId: string } {
+    const [songId, themeId] = key.split('::');
+    return { songId, themeId };
+  }
+
+  private scheduleThemeFlush(): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+    if (this.themeFlushHandle) {
+      clearTimeout(this.themeFlushHandle);
+    }
+    this.themeFlushHandle = setTimeout(() => {
+      this.themeFlushHandle = null;
+      this.flushPendingSongThemes();
+    }, this.themeFlushDelay);
+  }
+
+  private cancelThemeFlushTimer(): void {
+    if (this.themeFlushHandle) {
+      clearTimeout(this.themeFlushHandle);
+      this.themeFlushHandle = null;
+    }
+  }
+
+  private queueThemeAssignment(userId: string, songId: string, themeId: string): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+    const key = this.themeKey(songId, themeId);
+    this.pendingThemeRemovals.delete(key);
+    this.pendingThemeAssignments.add(key);
+    this.scheduleThemeFlush();
+  }
+
+  private queueThemeRemoval(userId: string, songId: string, themeId: string): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+    const key = this.themeKey(songId, themeId);
+    this.pendingThemeAssignments.delete(key);
+    this.pendingThemeRemovals.add(key);
+    this.scheduleThemeFlush();
+  }
+
+  private flushPendingSongThemes(force = false): void {
+    if (!this.remoteEnabled) {
+      this.pendingThemeAssignments.clear();
+      this.pendingThemeRemovals.clear();
+      return;
+    }
+
+    if (this.themeFlushHandle) {
+      this.cancelThemeFlushTimer();
+    }
+
+    if (!force && this.pendingThemeAssignments.size === 0 && this.pendingThemeRemovals.size === 0) {
+      return;
+    }
+
+    const assignments = Array.from(this.pendingThemeAssignments.values()).map(key => {
+      const { songId, themeId } = this.splitThemeKey(key);
+      return { songId, themeId };
+    });
+    const removals = Array.from(this.pendingThemeRemovals.values()).map(key => {
+      const { songId, themeId } = this.splitThemeKey(key);
+      return { songId, themeId };
+    });
+
+    this.pendingThemeAssignments.clear();
+    this.pendingThemeRemovals.clear();
+
+    if (assignments.length === 0 && removals.length === 0) {
+      return;
+    }
+
+    this.enqueueAuthorizedTask(async token => {
+      try {
+        await this.apiService.assignThemesBulk(token, assignments, removals);
+      } catch (error) {
+        console.error('[StorageService] Failed to flush song theme batch', error);
+        assignments.forEach(entry => {
+          this.pendingThemeAssignments.add(this.themeKey(entry.songId, entry.themeId));
+        });
+        removals.forEach(entry => {
+          this.pendingThemeRemovals.add(this.themeKey(entry.songId, entry.themeId));
+        });
+        this.scheduleThemeFlush();
+        throw error;
+      }
+    });
+  }
+
+  private scheduleImportedDeleteFlush(): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+    if (this.importedDeleteFlushHandle) {
+      clearTimeout(this.importedDeleteFlushHandle);
+    }
+    this.importedDeleteFlushHandle = setTimeout(() => {
+      this.importedDeleteFlushHandle = null;
+      this.flushPendingImportedSongDeletes();
+    }, this.importedDeleteFlushDelay);
+  }
+
+  private cancelImportedDeleteFlushTimer(): void {
+    if (this.importedDeleteFlushHandle) {
+      clearTimeout(this.importedDeleteFlushHandle);
+      this.importedDeleteFlushHandle = null;
+    }
+  }
+
+  private queueImportedSongDelete(userId: string, songId: string): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+    this.pendingImportedSongDeletes.add(songId);
+    this.scheduleImportedDeleteFlush();
+  }
+
+  private flushPendingImportedSongDeletes(force = false): void {
+    if (!this.remoteEnabled) {
+      this.pendingImportedSongDeletes.clear();
+      return;
+    }
+
+    if (this.importedDeleteFlushHandle) {
+      this.cancelImportedDeleteFlushTimer();
+    }
+
+    if (!force && this.pendingImportedSongDeletes.size === 0) {
+      return;
+    }
+
+    const songIds = Array.from(this.pendingImportedSongDeletes.values());
+    this.pendingImportedSongDeletes.clear();
+
+    if (songIds.length === 0) {
+      return;
+    }
+
+    this.enqueueAuthorizedTask(async token => {
+      try {
+        await this.apiService.removeImportedSongsBulk(token, songIds);
+      } catch (error) {
+        console.error('[StorageService] Failed to flush imported song delete batch', error);
+        songIds.forEach(id => this.pendingImportedSongDeletes.add(id));
+        this.scheduleImportedDeleteFlush();
+        throw error;
+      }
+    });
+  }
+
+  private schedulePlaylistDeleteFlush(): void {
+    if (!this.remoteEnabled) {
+      return;
+    }
+    if (this.playlistDeleteFlushHandle) {
+      clearTimeout(this.playlistDeleteFlushHandle);
+    }
+    this.playlistDeleteFlushHandle = setTimeout(() => {
+      this.playlistDeleteFlushHandle = null;
+      this.flushPendingPlaylistDeletes();
+    }, this.playlistDeleteFlushDelay);
+  }
+
+  private cancelPlaylistDeleteFlushTimer(): void {
+    if (this.playlistDeleteFlushHandle) {
+      clearTimeout(this.playlistDeleteFlushHandle);
+      this.playlistDeleteFlushHandle = null;
+    }
+  }
+
+  private queuePlaylistDelete(userId: string, playlistId: string): void {
+    if (!this.remoteEnabled || !this.isCurrentUser(userId)) {
+      return;
+    }
+    this.pendingPlaylistDeletes.add(playlistId);
+    this.schedulePlaylistDeleteFlush();
+  }
+
+  private flushPendingPlaylistDeletes(force = false): void {
+    if (!this.remoteEnabled) {
+      this.pendingPlaylistDeletes.clear();
+      return;
+    }
+
+    if (this.playlistDeleteFlushHandle) {
+      this.cancelPlaylistDeleteFlushTimer();
+    }
+
+    if (!force && this.pendingPlaylistDeletes.size === 0) {
+      return;
+    }
+
+    const playlistIds = Array.from(this.pendingPlaylistDeletes.values());
+    this.pendingPlaylistDeletes.clear();
+
+    if (playlistIds.length === 0) {
+      return;
+    }
+
+    this.enqueueAuthorizedTask(async token => {
+      try {
+        await this.apiService.deletePlaylistsBulk(token, playlistIds);
+      } catch (error) {
+        console.error('[StorageService] Failed to flush playlist delete batch', error);
+        playlistIds.forEach(id => this.pendingPlaylistDeletes.add(id));
+        this.schedulePlaylistDeleteFlush();
+        throw error;
+      }
+    });
+  }
+
+  private handleVisibilityChange(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    if (document.visibilityState === 'hidden') {
+      this.flushPendingRatings(true);
+      this.flushPendingSongThemes(true);
+      this.flushPendingImportedSongDeletes(true);
+      this.flushPendingPlaylistDeletes(true);
+    }
+  }
+
+  private handleBeforeUnload(): void {
+    this.flushPendingRatings(true);
+    this.flushPendingSongThemes(true);
+    this.flushPendingImportedSongDeletes(true);
+    this.flushPendingPlaylistDeletes(true);
   }
 
   private async getAccessToken(): Promise<string | null> {
@@ -177,6 +726,19 @@ export class StorageService implements OnDestroy {
   }
 
   private clearLocalDataForUser(userId: string): void {
+    this.pendingRatingUpdates.clear();
+    this.pendingRatingDeletes.clear();
+    this.cancelRatingFlushTimer();
+    this.persistRatingPendingState();
+    this.removeRatingStateForUser(userId);
+    this.pendingThemeAssignments.clear();
+    this.pendingThemeRemovals.clear();
+    this.cancelThemeFlushTimer();
+    this.pendingImportedSongDeletes.clear();
+    this.cancelImportedDeleteFlushTimer();
+    this.pendingPlaylistDeletes.clear();
+    this.cancelPlaylistDeleteFlushTimer();
+
     const ratingsDb = this.getRatingsDatabase();
     delete ratingsDb[userId];
     this.saveRatingsDatabase(ratingsDb);
@@ -221,14 +783,10 @@ export class StorageService implements OnDestroy {
     importedDb[userId] = {};
     library.songs.forEach(song => {
       importedDb[userId][song.id] = {
-        id: song.id,
+        ...song,
         videoId: song.videoId ?? '',
-        title: song.title,
-        artist: song.artist ?? '',
-        album: song.album,
-        duration: song.duration,
-        thumbnailUrl: song.thumbnailUrl,
-        playlistId: song.playlistId
+        title: song.title ?? 'Unknown title',
+        artist: song.artist ?? ''
       };
     });
     this.saveImportedSongsDatabase(importedDb);
@@ -365,7 +923,7 @@ export class StorageService implements OnDestroy {
           artist: ''
         };
 
-      this.enqueueAuthorizedTask(token => this.apiService.saveRating(token, songForRemote, rating));
+      this.queueRatingUpsert(userId, songForRemote, rating);
     }
   }
 
@@ -396,7 +954,7 @@ export class StorageService implements OnDestroy {
       this.saveRatingsDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId)) {
-        this.enqueueAuthorizedTask(token => this.apiService.deleteRating(token, songId));
+        this.queueRatingDelete(userId, songId);
       }
     }
   }
@@ -410,9 +968,8 @@ export class StorageService implements OnDestroy {
       this.saveRatingsDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId) && songIds.length > 0) {
-        this.enqueueAuthorizedTask(async token => {
-          await Promise.all(songIds.map(id => this.apiService.deleteRating(token, id)));
-        });
+        songIds.forEach(songId => this.queueRatingDelete(userId, songId));
+        this.flushPendingRatings(true);
       }
     }
   }
@@ -507,7 +1064,7 @@ export class StorageService implements OnDestroy {
       this.saveSongThemesDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId)) {
-        this.enqueueAuthorizedTask(token => this.apiService.assignTheme(token, songId, themeId));
+        this.queueThemeAssignment(userId, songId, themeId);
       }
     }
   }
@@ -520,7 +1077,7 @@ export class StorageService implements OnDestroy {
       this.saveSongThemesDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId)) {
-        this.enqueueAuthorizedTask(token => this.apiService.removeTheme(token, songId, themeId));
+        this.queueThemeRemoval(userId, songId, themeId);
       }
     }
   }
@@ -607,7 +1164,7 @@ export class StorageService implements OnDestroy {
       this.saveImportedSongsDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId)) {
-        this.enqueueAuthorizedTask(token => this.apiService.removeImportedSong(token, songId));
+        this.queueImportedSongDelete(userId, songId);
       }
     }
   }
@@ -621,9 +1178,8 @@ export class StorageService implements OnDestroy {
       this.saveImportedSongsDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId) && songIds.length > 0) {
-        this.enqueueAuthorizedTask(async token => {
-          await Promise.all(songIds.map(id => this.apiService.removeImportedSong(token, id)));
-        });
+        songIds.forEach(songId => this.queueImportedSongDelete(userId, songId));
+        this.flushPendingImportedSongDeletes(true);
       }
     }
   }
@@ -723,7 +1279,7 @@ export class StorageService implements OnDestroy {
       this.saveLocalPlaylistsDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId)) {
-        this.enqueueAuthorizedTask(token => this.apiService.deletePlaylist(token, playlistId));
+        this.queuePlaylistDelete(userId, playlistId);
       }
     }
   }
@@ -790,9 +1346,8 @@ export class StorageService implements OnDestroy {
       this.saveLocalPlaylistsDatabase(db);
 
       if (this.remoteEnabled && this.isCurrentUser(userId) && playlistIds.length > 0) {
-        this.enqueueAuthorizedTask(async token => {
-          await Promise.all(playlistIds.map(id => this.apiService.deletePlaylist(token, id)));
-        });
+        playlistIds.forEach(id => this.queuePlaylistDelete(userId, id));
+        this.flushPendingPlaylistDeletes(true);
       }
     }
   }

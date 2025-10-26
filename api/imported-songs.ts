@@ -6,6 +6,11 @@ import { getServiceSupabaseClient } from './_lib/supabaseClient';
 type SongPayload = {
   id: string;
   videoId?: string;
+  originalVideoId?: string;
+  fallbackVideoId?: string;
+  videoAvailabilityStatus?: 'playable' | 'fallback' | 'unavailable';
+  videoUnavailableReason?: string;
+  videoCheckedAt?: string;
   title: string;
   artist?: string;
   album?: string;
@@ -16,6 +21,11 @@ type SongPayload = {
 type SongRow = {
   id: string;
   youtube_song_id: string | null;
+  original_youtube_song_id: string | null;
+  fallback_youtube_song_id: string | null;
+  video_availability_status: string | null;
+  video_unavailable_reason: string | null;
+  video_checked_at: string | null;
   title: string | null;
   artist: string | null;
   album: string | null;
@@ -46,6 +56,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             songs (
               id,
               youtube_song_id,
+              original_youtube_song_id,
+              fallback_youtube_song_id,
+              video_availability_status,
+              video_unavailable_reason,
+              video_checked_at,
               title,
               artist,
               album,
@@ -62,16 +77,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
 
       const rows = (data ?? []) as unknown as UserSongRow[];
-      const songs = rows.map(entry => ({
-          id: entry.songs?.id ?? entry.song_id,
-          videoId: entry.songs?.youtube_song_id ?? undefined,
-          title: entry.songs?.title ?? entry.metadata?.['title'] ?? 'Unknown title',
-          artist: entry.songs?.artist ?? entry.metadata?.['artist'] ?? undefined,
-          album: entry.songs?.album ?? entry.metadata?.['album'] ?? undefined,
-          duration: entry.songs?.duration_text ?? entry.metadata?.['duration'] ?? undefined,
-          thumbnailUrl: entry.songs?.thumbnail_url ?? entry.metadata?.['thumbnailUrl'] ?? undefined,
+      const songs = rows.map(entry => {
+        const songRow = entry.songs;
+        const metadata = entry.metadata ?? {};
+        const primaryVideoId = songRow?.youtube_song_id ?? metadata['videoId'] ?? undefined;
+        const fallbackVideoId = songRow?.fallback_youtube_song_id ?? metadata['fallbackVideoId'] ?? undefined;
+        const originalVideoId =
+          songRow?.original_youtube_song_id ??
+          metadata['originalVideoId'] ??
+          fallbackVideoId ??
+          primaryVideoId ??
+          undefined;
+
+        return {
+          id: songRow?.id ?? entry.song_id,
+          videoId: primaryVideoId,
+          originalVideoId,
+          fallbackVideoId,
+          videoAvailabilityStatus: songRow?.video_availability_status ?? metadata['videoAvailabilityStatus'] ?? undefined,
+          videoUnavailableReason: songRow?.video_unavailable_reason ?? metadata['videoUnavailableReason'] ?? undefined,
+          videoCheckedAt: songRow?.video_checked_at ?? metadata['videoCheckedAt'] ?? undefined,
+          title: songRow?.title ?? metadata['title'] ?? 'Unknown title',
+          artist: songRow?.artist ?? metadata['artist'] ?? undefined,
+          album: songRow?.album ?? metadata['album'] ?? undefined,
+          duration: songRow?.duration_text ?? metadata['duration'] ?? undefined,
+          thumbnailUrl: songRow?.thumbnail_url ?? metadata['thumbnailUrl'] ?? undefined,
           importedAt: entry.imported_at
-        }));
+        };
+      });
 
       sendJson(res, 200, { songs });
       return;
@@ -94,6 +127,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const songRecord = {
           id: song.id,
           youtube_song_id: song.videoId ?? null,
+          original_youtube_song_id: song.originalVideoId ?? song.videoId ?? null,
+          fallback_youtube_song_id: song.fallbackVideoId ?? null,
+          video_availability_status: song.videoAvailabilityStatus ?? null,
+          video_unavailable_reason: song.videoUnavailableReason ?? null,
+          video_checked_at: song.videoCheckedAt ?? null,
           title: song.title,
           artist: song.artist ?? null,
           album: song.album ?? null,
@@ -115,7 +153,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             artist: song.artist,
             album: song.album,
             duration: song.duration,
-            thumbnailUrl: song.thumbnailUrl
+            thumbnailUrl: song.thumbnailUrl,
+            videoId: song.videoId,
+            originalVideoId: song.originalVideoId,
+            fallbackVideoId: song.fallbackVideoId,
+            videoAvailabilityStatus: song.videoAvailabilityStatus,
+            videoUnavailableReason: song.videoUnavailableReason,
+            videoCheckedAt: song.videoCheckedAt
           }
         };
 

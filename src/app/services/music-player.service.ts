@@ -58,17 +58,19 @@ export class MusicPlayerService {
   playNext(): SongWithMetadata | null {
     const state = this.currentState;
 
-    if (state.currentIndex < state.queue.length - 1) {
-      const nextIndex = state.currentIndex + 1;
-      const nextSong = state.queue[nextIndex];
+    for (let index = state.currentIndex + 1; index < state.queue.length; index++) {
+      const candidate = state.queue[index];
+      if (candidate.videoAvailabilityStatus === 'unavailable') {
+        continue;
+      }
 
       this.stateSubject.next({
         ...state,
-        currentIndex: nextIndex,
-        currentSong: nextSong
+        currentIndex: index,
+        currentSong: candidate
       });
 
-      return nextSong;
+      return candidate;
     }
 
     return null;
@@ -81,17 +83,19 @@ export class MusicPlayerService {
   playPrevious(): SongWithMetadata | null {
     const state = this.currentState;
 
-    if (state.currentIndex > 0) {
-      const prevIndex = state.currentIndex - 1;
-      const prevSong = state.queue[prevIndex];
+    for (let index = state.currentIndex - 1; index >= 0; index--) {
+      const candidate = state.queue[index];
+      if (candidate.videoAvailabilityStatus === 'unavailable') {
+        continue;
+      }
 
       this.stateSubject.next({
         ...state,
-        currentIndex: prevIndex,
-        currentSong: prevSong
+        currentIndex: index,
+        currentSong: candidate
       });
 
-      return prevSong;
+      return candidate;
     }
 
     return null;
@@ -104,15 +108,47 @@ export class MusicPlayerService {
     const state = this.currentState;
 
     if (index >= 0 && index < state.queue.length) {
-      const song = state.queue[index];
+      if (state.queue[index].videoAvailabilityStatus !== 'unavailable') {
+        const song = state.queue[index];
 
-      this.stateSubject.next({
-        ...state,
-        currentIndex: index,
-        currentSong: song
-      });
+        this.stateSubject.next({
+          ...state,
+          currentIndex: index,
+          currentSong: song
+        });
 
-      return song;
+        return song;
+      }
+
+      for (let forward = index + 1; forward < state.queue.length; forward++) {
+        const candidate = state.queue[forward];
+        if (candidate.videoAvailabilityStatus === 'unavailable') {
+          continue;
+        }
+
+        this.stateSubject.next({
+          ...state,
+          currentIndex: forward,
+          currentSong: candidate
+        });
+
+        return candidate;
+      }
+
+      for (let backward = index - 1; backward >= 0; backward--) {
+        const candidate = state.queue[backward];
+        if (candidate.videoAvailabilityStatus === 'unavailable') {
+          continue;
+        }
+
+        this.stateSubject.next({
+          ...state,
+          currentIndex: backward,
+          currentSong: candidate
+        });
+
+        return candidate;
+      }
     }
 
     return null;
@@ -164,14 +200,24 @@ export class MusicPlayerService {
    */
   hasNext(): boolean {
     const state = this.currentState;
-    return state.currentIndex < state.queue.length - 1;
+    for (let index = state.currentIndex + 1; index < state.queue.length; index++) {
+      if (state.queue[index].videoAvailabilityStatus !== 'unavailable') {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
    * Check if there's a previous song
    */
   hasPrevious(): boolean {
-    return this.currentState.currentIndex > 0;
+    for (let index = this.currentState.currentIndex - 1; index >= 0; index--) {
+      if (this.currentState.queue[index].videoAvailabilityStatus !== 'unavailable') {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -267,6 +313,10 @@ export class MusicPlayerService {
    * Add a song to the end of the queue
    */
   addToQueue(song: SongWithMetadata): void {
+    if (song.videoAvailabilityStatus === 'unavailable') {
+      return;
+    }
+
     const state = this.currentState;
     const newQueue = [...state.queue, song];
 
@@ -280,6 +330,10 @@ export class MusicPlayerService {
    * Add a song to play next (right after the current song)
    */
   addToPlayNext(song: SongWithMetadata): void {
+    if (song.videoAvailabilityStatus === 'unavailable') {
+      return;
+    }
+
     const state = this.currentState;
     const newQueue = [...state.queue];
 

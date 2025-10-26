@@ -47,12 +47,53 @@ interface YouTubePlaylistItemResponse {
   nextPageToken?: string;
 }
 
+interface YouTubeVideosResponse {
+  items: Array<{
+    id: string;
+    status?: {
+      uploadStatus?: string;
+      privacyStatus?: string;
+      embeddable?: boolean;
+      rejectionReason?: string;
+    };
+    contentDetails?: {
+      regionRestriction?: {
+        blocked?: string[];
+        allowed?: string[];
+      };
+    };
+  }>;
+}
+
+interface YouTubeSearchResponse {
+  items: Array<{
+    id?: {
+      videoId?: string;
+    };
+    snippet?: {
+      title?: string;
+      channelTitle?: string;
+      thumbnails?: {
+        default?: { url: string };
+        medium?: { url: string };
+        high?: { url: string };
+      };
+    };
+  }>;
+}
+
+type VideoAvailabilityInfo = {
+  playable: boolean;
+  reason?: string;
+};
+
 @Injectable({
   providedIn: 'root'
 })
 export class YoutubeMusicService {
   private readonly API_BASE_URL = 'https://www.googleapis.com/youtube/v3';
   private readonly USE_MOCK_DATA = false; // Set to false when ready to use real API
+  private readonly MAX_VIDEO_IDS_PER_REQUEST = 50;
 
   constructor(private authService: AuthService) {}
 
@@ -159,7 +200,7 @@ export class YoutubeMusicService {
         } else {
           // No more pages, return all songs
           console.log(`✅ Finished! Total songs fetched: ${combinedSongs.length}`);
-          return of(combinedSongs);
+          return from(this.ensureSongsPlayable(combinedSongs, accessToken));
         }
       }),
       catchError(error => {
@@ -168,6 +209,226 @@ export class YoutubeMusicService {
         return of(allSongs);
       })
     );
+  }
+
+  private async ensureSongsPlayable(songs: Song[], accessToken: string): Promise<Song[]> {
+    if (songs.length === 0) {
+      return [];
+    }
+
+    const nowIso = new Date().toISOString();
+
+    try {
+      const idsToCheck = songs
+        .map(song => song.originalVideoId || song.videoId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+      const availabilityMap = await this.fetchVideoAvailabilityMap(idsToCheck, accessToken);
+      const processed: Song[] = [];
+
+      for (const song of songs) {
+        const originalId = song.originalVideoId && song.originalVideoId.length > 0
+          ? song.originalVideoId
+          : song.videoId;
+        const availability = originalId ? availabilityMap.get(originalId) : undefined;
+
+        const baseSong: Song = {
+          ...song,
+          originalVideoId: originalId || undefined,
+          videoCheckedAt: nowIso
+        };
+
+        if (!originalId) {
+          processed.push({
+            ...baseSong,
+            videoId: '',
+            videoAvailabilityStatus: 'unavailable',
+            videoUnavailableReason: 'Missing video identifier'
+          });
+          continue;
+        }
+
+        if (!availability || availability.playable) {
+          processed.push({
+            ...baseSong,
+            videoAvailabilityStatus: 'playable',
+            videoUnavailableReason: undefined
+          });
+          continue;
+        }
+
+        const fallback = await this.searchFallbackVideo(baseSong, accessToken, new Set([originalId]));
+        if (fallback) {
+          processed.push({
+            ...baseSong,
+            videoId: fallback.videoId,
+            fallbackVideoId: fallback.videoId,
+            thumbnailUrl: baseSong.thumbnailUrl ?? fallback.thumbnailUrl,
+            videoAvailabilityStatus: 'fallback',
+            videoUnavailableReason: availability.reason
+          });
+        } else {
+          processed.push({
+            ...baseSong,
+            videoId: originalId,
+            videoAvailabilityStatus: 'unavailable',
+            videoUnavailableReason: availability.reason
+          });
+        }
+      }
+
+      return processed;
+    } catch (error) {
+      console.error('Failed to verify song availability', error);
+      return songs.map(song => ({
+        ...song,
+        originalVideoId: song.originalVideoId || song.videoId || undefined
+      }));
+    }
+  }
+
+  private async fetchVideoAvailabilityMap(videoIds: string[], accessToken: string): Promise<Map<string, VideoAvailabilityInfo>> {
+    const uniqueIds = Array.from(new Set(videoIds.filter(id => typeof id === 'string' && id.length > 0)));
+    const availabilityMap = new Map<string, VideoAvailabilityInfo>();
+
+    if (uniqueIds.length === 0) {
+      return availabilityMap;
+    }
+
+    const batches = this.chunkArray(uniqueIds, this.MAX_VIDEO_IDS_PER_REQUEST);
+
+    for (const batch of batches) {
+      const url = `${this.API_BASE_URL}/videos?part=contentDetails,status&id=${batch.join(',')}`;
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const message = await response.text().catch(() => '');
+          console.warn(`Unable to fetch video availability (${response.status}): ${message}`);
+          continue;
+        }
+
+        const data = (await response.json()) as YouTubeVideosResponse;
+        const returnedIds = new Set<string>();
+
+        data.items?.forEach(item => {
+          if (!item?.id) {
+            return;
+          }
+          returnedIds.add(item.id);
+          availabilityMap.set(item.id, this.interpretVideoAvailability(item));
+        });
+
+        batch.forEach(id => {
+          if (!availabilityMap.has(id)) {
+            availabilityMap.set(id, { playable: false, reason: 'Video not found or removed' });
+          }
+        });
+      } catch (error) {
+        console.error('Error checking video availability', error);
+      }
+    }
+
+    return availabilityMap;
+  }
+
+  private interpretVideoAvailability(item: YouTubeVideosResponse['items'][number]): VideoAvailabilityInfo {
+    const status = item.status ?? {};
+    const contentDetails = item.contentDetails ?? {};
+
+    if (status.embeddable === false) {
+      return { playable: false, reason: 'Embedding disabled by video owner' };
+    }
+
+    if (status.privacyStatus === 'private') {
+      return { playable: false, reason: 'Video is private' };
+    }
+
+    if (status.uploadStatus && status.uploadStatus !== 'processed') {
+      return { playable: false, reason: `Upload status: ${status.uploadStatus}` };
+    }
+
+    if (status.rejectionReason) {
+      return { playable: false, reason: `Rejected: ${status.rejectionReason}` };
+    }
+
+    const blockedRegions = contentDetails.regionRestriction?.blocked;
+    if (Array.isArray(blockedRegions) && blockedRegions.length > 0) {
+      return { playable: false, reason: 'Region restricted' };
+    }
+
+    return { playable: true };
+  }
+
+  private async searchFallbackVideo(
+    song: Song,
+    accessToken: string,
+    skipIds: Set<string>
+  ): Promise<{ videoId: string; thumbnailUrl?: string } | null> {
+    const queryParts = [song.title, song.artist].filter(part => typeof part === 'string' && part.trim().length > 0);
+    if (queryParts.length === 0) {
+      return null;
+    }
+
+    const query = encodeURIComponent(queryParts.join(' - '));
+    const url = `${this.API_BASE_URL}/search?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${query}`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const message = await response.text().catch(() => '');
+        console.warn(`YouTube search failed (${response.status}): ${message}`);
+        return null;
+      }
+
+      const data = (await response.json()) as YouTubeSearchResponse;
+      const candidates = (data.items ?? [])
+        .map(item => ({
+          videoId: item.id?.videoId ?? '',
+          thumbnailUrl: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || undefined
+        }))
+        .filter(candidate => candidate.videoId.length > 0 && !skipIds.has(candidate.videoId));
+
+      if (candidates.length === 0) {
+        return null;
+      }
+
+      const availabilityMap = await this.fetchVideoAvailabilityMap(
+        candidates.map(candidate => candidate.videoId),
+        accessToken
+      );
+
+      for (const candidate of candidates) {
+        const availability = availabilityMap.get(candidate.videoId);
+        if (!availability || availability.playable) {
+          return candidate;
+        }
+      }
+    } catch (error) {
+      console.error('Error searching for fallback video', error);
+    }
+
+    return null;
+  }
+
+  private chunkArray<T>(items: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+      result.push(items.slice(index, index + size));
+    }
+    return result;
   }
 
   /**
@@ -355,10 +616,14 @@ export class YoutubeMusicService {
       if (artistName.endsWith(' - Topic')) {
         artistName = artistName.replace(/ - Topic$/, '');
       }
-      
+      const resolvedVideoId = item.snippet.resourceId?.videoId || item.contentDetails?.videoId || '';
+
       return {
         id: item.id,
-        videoId: item.snippet.resourceId?.videoId || item.contentDetails?.videoId || '',
+        videoId: resolvedVideoId,
+        originalVideoId: resolvedVideoId || undefined,
+        videoAvailabilityStatus: resolvedVideoId ? 'playable' : 'unavailable',
+        videoUnavailableReason: resolvedVideoId ? undefined : 'Missing video identifier',
         title: item.snippet.title,
         artist: artistName,
         album: '', // YouTube API doesn't provide album info directly

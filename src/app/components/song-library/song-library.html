@@ -161,11 +161,62 @@
           </button>
         </div>
         <div class="right-section">
-          <button class="shuffle-btn" (click)="shuffleSongs()" title="Shuffle songs">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-              <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
-            </svg>
-          </button>
+          <div class="shuffle-controls">
+            <button class="shuffle-btn" (click)="shuffleSongs()" title="Shuffle songs">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+              </svg>
+            </button>
+            <div
+              class="rating-bias-dropdown"
+              [class.open]="showRatingBiasDropdown">
+              <button
+                class="bias-toggle-btn"
+                type="button"
+                (click)="toggleRatingBiasDropdown($event)"
+                [attr.aria-expanded]="showRatingBiasDropdown"
+                aria-haspopup="true"
+                title="Favor higher-rated songs when shuffling">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
+                  <path d="M4 6h16v2H4V6zm3 5h10v2H7v-2zm-3 5h16v2H4v-2z"/>
+                </svg>
+                <span class="toggle-label">{{ ratingBiasLabel }}</span>
+              </button>
+              <div class="dropdown-panel" *ngIf="showRatingBiasDropdown">
+                <div class="panel-header">
+                  <div class="panel-heading">
+                    <span class="title-text">Favor high ratings</span>
+                    <button
+                      type="button"
+                      class="help-icon"
+                      aria-label="How favoring high ratings works">
+                      ?
+                      <span class="tooltip">
+                        Higher settings push higher-rated songs toward the front of the shuffle. At Max bias a 10-rated song is 10× more likely to appear before a 1-rated song in the shuffled queue (and roughly 2× more likely than a 5).
+                      </span>
+                    </button>
+                  </div>
+                  <button
+                    class="close-btn"
+                    type="button"
+                    (click)="closeRatingBiasDropdown()"
+                    aria-label="Close bias settings">
+                    &times;
+                  </button>
+                </div>
+                <div class="preset-row">
+                  <button
+                    *ngFor="let option of ratingBiasOptions"
+                    type="button"
+                    class="preset-chip"
+                    [class.active]="option.value === ratingBiasStrength"
+                    (click)="setRatingBiasStrength(option.value)">
+                    {{ option.shortLabel }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="song-count">
             {{ filteredSongs.length }} / {{ allSongs.length }} songs
           </div>
@@ -191,12 +242,18 @@
             type="checkbox" 
             class="song-checkbox" 
             [checked]="selectedSongs.has(song.id)"
-            (click)="toggleSongSelection(song.id)">
+            (click)="$event.stopPropagation(); toggleSongSelection(song.id)">
           <img [src]="song.thumbnailUrl" [alt]="song.title" class="song-thumbnail" [class.clickable]="!selectMode" (click)="!selectMode && $event.stopPropagation(); !selectMode && playSong(song)" [attr.data-playing]="playingSongId === song.id ? 'true' : 'false'">
           
           <div class="song-info" [class.clickable]="!selectMode" (click)="!selectMode && $event.stopPropagation(); !selectMode && playSong(song)">
             <div class="song-title">{{ song.title }}</div>
             <div class="song-artist">{{ song.artist }}</div>
+            <div class="video-status unavailable" *ngIf="song.videoAvailabilityStatus === 'unavailable'">
+              Video unavailable<span *ngIf="song.videoUnavailableReason">: {{ song.videoUnavailableReason }}</span>
+            </div>
+            <div class="video-status fallback" *ngIf="song.videoAvailabilityStatus === 'fallback'">
+              Alternate video in use
+            </div>
           </div>
 
           <div class="song-themes" (click)="$event.stopPropagation()">

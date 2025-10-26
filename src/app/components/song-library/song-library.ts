@@ -65,6 +65,19 @@ export class SongLibrary implements OnInit, OnDestroy {
   playlists: LocalPlaylist[] = [];
   currentPlaylist: LocalPlaylist | null = null;
 
+  // Shuffle preferences
+  ratingBiasStrength: number = 0;
+  readonly ratingBiasOptions = [
+    { value: 0, label: 'Off (pure shuffle)', shortLabel: 'Off' },
+    { value: 15, label: 'Gentle bias', shortLabel: 'Gentle' },
+    { value: 35, label: 'Balanced bias', shortLabel: 'Balanced' },
+    { value: 55, label: 'Bold bias', shortLabel: 'Bold' },
+    { value: 75, label: 'Strong bias', shortLabel: 'Strong' },
+    { value: 90, label: 'Intense bias', shortLabel: 'Intense' },
+    { value: 100, label: 'Max bias', shortLabel: 'Max' }
+  ];
+  showRatingBiasDropdown: boolean = false;
+
   // Create playlist modal
   showCreatePlaylistModal: boolean = false;
   createMode: CreatePlaylistMode = 'simple';
@@ -139,6 +152,17 @@ export class SongLibrary implements OnInit, OnDestroy {
   // Playback controls
   playSong(song: SongWithMetadata): void {
     if (this.selectMode) return;
+
+    if (song.videoAvailabilityStatus === 'unavailable') {
+      const reason = song.videoUnavailableReason
+        ? `\nReason: ${song.videoUnavailableReason}`
+        : '';
+      void this.modalService.alert(
+        'Video unavailable',
+        `YouTube does not allow this song to play in the embedded player.${reason}`
+      );
+      return;
+    }
 
     // Update the music player service with the new song and queue
     this.musicPlayerService.playSong(song, this.filteredSongs);
@@ -306,15 +330,97 @@ export class SongLibrary implements OnInit, OnDestroy {
   shuffleSongs(): void {
     if (this.filteredSongs.length === 0) return;
 
-    // Fisher-Yates shuffle algorithm - create shuffled copy
-    const shuffled = [...this.filteredSongs];
+    const biasStrength = Math.min(Math.max(this.ratingBiasStrength, 0), 100) / 100;
+    const shuffled =
+      biasStrength > 0
+        ? this.createWeightedShuffle(this.filteredSongs, biasStrength)
+        : this.createUniformShuffle(this.filteredSongs);
+
+    const firstPlayable = shuffled.find(song => song.videoAvailabilityStatus !== 'unavailable');
+    if (!firstPlayable) {
+      void this.modalService.alert(
+        'No playable songs',
+        'Every song in this view is blocked from playback. Try importing alternate versions or clearing filters.'
+      );
+      return;
+    }
+
+    // Start playing the first playable song from the shuffled list
+    this.musicPlayerService.playSong(firstPlayable, shuffled);
+  }
+
+  get ratingBiasLabel(): string {
+    return (
+      this.ratingBiasOptions.find(option => option.value === this.ratingBiasStrength)?.shortLabel ?? 'Custom'
+    );
+  }
+
+  updateRatingBiasStrength(value: number | string): void {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+    this.ratingBiasStrength = Math.min(Math.max(parsed, 0), 100);
+  }
+
+  toggleRatingBiasDropdown(event: Event): void {
+    event.stopPropagation();
+    this.showRatingBiasDropdown = !this.showRatingBiasDropdown;
+  }
+
+  closeRatingBiasDropdown(): void {
+    this.showRatingBiasDropdown = false;
+  }
+
+  setRatingBiasStrength(value: number): void {
+    this.updateRatingBiasStrength(value);
+  }
+
+  private createUniformShuffle(songs: SongWithMetadata[]): SongWithMetadata[] {
+    const shuffled = [...songs];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
+    return shuffled;
+  }
 
-    // Start playing the first song from the shuffled list
-    this.musicPlayerService.playSong(shuffled[0], shuffled);
+  private createWeightedShuffle(songs: SongWithMetadata[], biasStrength: number): SongWithMetadata[] {
+    const pool = [...songs];
+    const result: SongWithMetadata[] = [];
+
+    while (pool.length > 0) {
+      const weights = pool.map(song => this.calculateSongWeight(song, biasStrength));
+      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+      if (totalWeight <= 0) {
+        result.push(...pool.splice(0));
+        break;
+      }
+
+      let threshold = Math.random() * totalWeight;
+      let selectedIndex = 0;
+
+      for (let i = 0; i < pool.length; i++) {
+        threshold -= weights[i];
+        if (threshold <= 0) {
+          selectedIndex = i;
+          break;
+        }
+      }
+
+      const [selectedSong] = pool.splice(selectedIndex, 1);
+      result.push(selectedSong);
+    }
+
+    return result;
+  }
+
+  private calculateSongWeight(song: SongWithMetadata, biasStrength: number): number {
+    const baselineWeight = 1;
+    const ratingValue = song.rating ?? 1;
+    const ratingWeight = Math.max(ratingValue, 1);
+    return baselineWeight * (1 - biasStrength) + ratingWeight * biasStrength;
   }
 
   changeSorting(option: SortOption): void {
@@ -513,11 +619,13 @@ export class SongLibrary implements OnInit, OnDestroy {
     this.currentPlaylist = playlist;
     this.showPlaylistViewerModal = false;
     document.body.style.overflow = '';
+    this.closeRatingBiasDropdown();
     this.applyFilters();
   }
 
   clearPlaylistView(): void {
     this.currentPlaylist = null;
+    this.closeRatingBiasDropdown();
     this.applyFilters();
   }
 
@@ -989,26 +1097,48 @@ export class SongLibrary implements OnInit, OnDestroy {
   }
 
   onDocumentClick(event: Event): void {
-    // Close menu when clicking anywhere outside
-    if (this.openMenuForSong) {
-      const target = event.target as HTMLElement;
-      const menuContainer = target.closest('.song-menu-container');
+    const target = event.target as HTMLElement;
 
-      // Only close if click is outside the menu container
+    // Close song action menu when clicking anywhere outside
+    if (this.openMenuForSong) {
+      const menuContainer = target.closest('.song-menu-container');
       if (!menuContainer) {
         this.closeSongMenu();
+      }
+    }
+
+    if (this.showRatingBiasDropdown) {
+      const biasContainer = target.closest('.rating-bias-dropdown');
+      if (!biasContainer) {
+        this.closeRatingBiasDropdown();
       }
     }
   }
 
   addSongToQueue(song: SongWithMetadata, event: Event): void {
     event.stopPropagation();
+    if (song.videoAvailabilityStatus === 'unavailable') {
+      const reason = song.videoUnavailableReason ? `\nReason: ${song.videoUnavailableReason}` : '';
+      void this.modalService.alert(
+        'Cannot add to queue',
+        `This song cannot be played in the embedded player.${reason}`
+      );
+      return;
+    }
     this.musicPlayerService.addToQueue(song);
     this.closeSongMenu();
   }
 
   playSongNext(song: SongWithMetadata, event: Event): void {
     event.stopPropagation();
+    if (song.videoAvailabilityStatus === 'unavailable') {
+      const reason = song.videoUnavailableReason ? `\nReason: ${song.videoUnavailableReason}` : '';
+      void this.modalService.alert(
+        'Cannot play next',
+        `This song cannot be played in the embedded player.${reason}`
+      );
+      return;
+    }
     this.musicPlayerService.addToPlayNext(song);
     this.closeSongMenu();
   }

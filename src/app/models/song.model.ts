@@ -1,6 +1,11 @@
 export interface Song {
   id: string;
   videoId: string;
+  originalVideoId?: string;
+  fallbackVideoId?: string;
+  videoAvailabilityStatus?: 'playable' | 'fallback' | 'unavailable';
+  videoUnavailableReason?: string;
+  videoCheckedAt?: string;
   title: string;
   artist: string;
   album?: string;

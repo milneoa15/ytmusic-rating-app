@@ -61,11 +61,38 @@ export class ApiService {
     );
   }
 
+  removeImportedSongsBulk(accessToken: string, songIds: string[]): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(
+        `${this.baseUrl}/imported-songs-bulk-delete`,
+        { songIds },
+        { headers: this.authHeaders(accessToken) }
+      )
+    );
+  }
+
   saveRating(accessToken: string, song: Song, rating: number): Promise<void> {
     return firstValueFrom(
       this.http.post<void>(
         `${this.baseUrl}/ratings`,
         { song, rating },
+        { headers: this.authHeaders(accessToken) }
+      )
+    );
+  }
+
+  saveRatingsBulk(
+    accessToken: string,
+    updates: Array<{ song: Song; rating: number }>,
+    deletes: string[]
+  ): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(
+        `${this.baseUrl}/ratings/bulk`,
+        {
+          updates,
+          deletes
+        },
         { headers: this.authHeaders(accessToken) }
       )
     );
@@ -109,6 +136,23 @@ export class ApiService {
     );
   }
 
+  assignThemesBulk(
+    accessToken: string,
+    assignments: Array<{ songId: string; themeId: string }>,
+    removals: Array<{ songId: string; themeId: string }>
+  ): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(
+        `${this.baseUrl}/song-themes-bulk`,
+        {
+          assignments,
+          removals
+        },
+        { headers: this.authHeaders(accessToken) }
+      )
+    );
+  }
+
   removeTheme(accessToken: string, songId: string, themeId: string): Promise<void> {
     return firstValueFrom(
       this.http.request<void>('delete', `${this.baseUrl}/song-themes`, {
@@ -126,6 +170,16 @@ export class ApiService {
         { headers: this.authHeaders(accessToken) }
       )
     ).then(response => response.playlist);
+  }
+
+  deletePlaylistsBulk(accessToken: string, playlistIds: string[]): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(
+        `${this.baseUrl}/playlists-bulk-delete`,
+        { playlistIds },
+        { headers: this.authHeaders(accessToken) }
+      )
+    );
   }
 
   deletePlaylist(accessToken: string, playlistId: string): Promise<void> {

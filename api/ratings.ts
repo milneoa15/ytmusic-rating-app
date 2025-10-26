@@ -6,6 +6,11 @@ import { getServiceSupabaseClient } from './_lib/supabaseClient';
 type SongRow = {
   id: string;
   youtube_song_id: string | null;
+  original_youtube_song_id: string | null;
+  fallback_youtube_song_id: string | null;
+  video_availability_status: string | null;
+  video_unavailable_reason: string | null;
+  video_checked_at: string | null;
   title: string | null;
   artist: string | null;
   album: string | null;
@@ -48,6 +53,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             songs (
               id,
               youtube_song_id,
+              original_youtube_song_id,
+              fallback_youtube_song_id,
+              video_availability_status,
+              video_unavailable_reason,
+              video_checked_at,
               title,
               artist,
               album,
@@ -82,7 +92,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         song: entry.songs
           ? {
               id: entry.songs.id,
-              videoId: entry.songs.youtube_song_id,
+              videoId: entry.songs.youtube_song_id ?? undefined,
+              originalVideoId: entry.songs.original_youtube_song_id ?? undefined,
+              fallbackVideoId: entry.songs.fallback_youtube_song_id ?? undefined,
+              videoAvailabilityStatus: entry.songs.video_availability_status ?? undefined,
+              videoUnavailableReason: entry.songs.video_unavailable_reason ?? undefined,
+              videoCheckedAt: entry.songs.video_checked_at ?? undefined,
               title: entry.songs.title,
               artist: entry.songs.artist,
               album: entry.songs.album ?? undefined,
@@ -109,6 +124,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         {
           id: song.id,
           youtube_song_id: song.videoId ?? null,
+          original_youtube_song_id: song.originalVideoId ?? song.videoId ?? null,
+          fallback_youtube_song_id: song.fallbackVideoId ?? null,
+          video_availability_status: song.videoAvailabilityStatus ?? null,
+          video_unavailable_reason: song.videoUnavailableReason ?? null,
+          video_checked_at: song.videoCheckedAt ?? null,
           title: song.title,
           artist: song.artist ?? null,
           album: song.album ?? null,
