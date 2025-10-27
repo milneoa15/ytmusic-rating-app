@@ -25,7 +25,6 @@ export class App implements OnInit, OnDestroy {
   playingSongId: string | null = null;
   currentSong: SongWithMetadata | null = null;
   miniPlayerVisible: boolean = false;
-  videoExpanded: boolean = false;
   private ytPlayer: any = null;
   private ytApiLoading = false;
   private ytApiLoaded = false;
@@ -34,9 +33,11 @@ export class App implements OnInit, OnDestroy {
   duration: number = 0;
   private progressTimer: any;
   isPlaying: boolean = false;
+  volume: number = 100; // Default volume at 100%
 
   // Queue management
   showQueue: boolean = false;
+  showVolumeSlider: boolean = false;
   private playerStateSubscription: Subscription | null = null;
   private navigationSubscription: Subscription | null = null;
 
@@ -104,7 +105,6 @@ export class App implements OnInit, OnDestroy {
     }
 
     this.miniPlayerVisible = state.miniPlayerVisible;
-    this.videoExpanded = state.videoExpanded;
 
     this.cdr.detectChanges();
   }
@@ -229,6 +229,18 @@ export class App implements OnInit, OnDestroy {
     this.currentTime = value;
   }
 
+  onVolumeChange(event: Event): void {
+    if (!this.ytPlayer || !this.playerReady) return;
+    const input = event.target as HTMLInputElement;
+    const value = Number(input.value);
+    this.volume = value;
+    this.ytPlayer.setVolume(value);
+  }
+
+  toggleVolumeSlider(): void {
+    this.showVolumeSlider = !this.showVolumeSlider;
+  }
+
   togglePlayback(event?: Event): void {
     event?.stopPropagation();
     if (!this.ytPlayer || !this.playerReady) return;
@@ -244,17 +256,6 @@ export class App implements OnInit, OnDestroy {
         this.isPlaying = true;
       }
     } catch {}
-  }
-
-  toggleVideo(event?: Event): void {
-    event?.stopPropagation();
-    if (!this.miniPlayerVisible) return;
-    this.musicPlayerService.toggleVideoExpanded();
-    if (this.videoExpanded && this.playerReady && !this.isPlaying) {
-      this.ytPlayer?.playVideo();
-      this.startProgressTimer();
-      this.isPlaying = true;
-    }
   }
 
   formatTime(sec: number): string {

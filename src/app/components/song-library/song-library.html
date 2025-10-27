@@ -112,6 +112,7 @@
         <button class="bulk-btn" (click)="openBulkRating()" [disabled]="selectedSongs.size === 0">Rate Selected</button>
         <button class="bulk-btn" (click)="openBulkThemeAssignment()" [disabled]="selectedSongs.size === 0">Add Theme</button>
         <button class="bulk-btn" (click)="addSelectedToPlaylist()" [disabled]="selectedSongs.size === 0">Add to Playlist</button>
+        <button class="bulk-btn" *ngIf="currentPlaylist" (click)="bulkRemoveFromPlaylist()" [disabled]="selectedSongs.size === 0">Remove from Playlist</button>
         <button class="bulk-btn delete" (click)="bulkDelete()" [disabled]="selectedSongs.size === 0">Delete Selected</button>
       </div>
 

@@ -1042,6 +1042,38 @@ export class SongLibrary implements OnInit, OnDestroy {
     this.applyFilters();
   }
 
+  async bulkRemoveFromPlaylist(): Promise<void> {
+    if (this.selectedSongs.size === 0 || !this.currentPlaylist) return;
+
+    const confirmed = await this.modalService.confirm(
+      'Remove from Playlist',
+      `Remove ${this.selectedSongs.size} selected song(s) from "${this.currentPlaylist.name}"?`,
+      'Remove',
+      'Cancel'
+    );
+
+    if (!confirmed) return;
+
+    const userId = this.authService.currentUserValue?.id;
+    if (!userId) return;
+
+    // Update the playlist by removing all selected songs
+    const updatedSongIds = this.currentPlaylist.songIds.filter(id => !this.selectedSongs.has(id));
+    
+    this.storageService.updateLocalPlaylist(userId, this.currentPlaylist.id, {
+      songIds: updatedSongIds
+    });
+    
+    // Update currentPlaylist reference
+    const updatedPlaylist = this.storageService.getLocalPlaylist(userId, this.currentPlaylist.id);
+    if (updatedPlaylist) {
+      this.currentPlaylist = updatedPlaylist;
+    }
+
+    this.selectedSongs.clear();
+    this.applyFilters();
+  }
+
   bulkRating: number = 5;
   showBulkRatingModal: boolean = false;
 

@@ -8,7 +8,6 @@ export interface PlayerState {
   currentSong: SongWithMetadata | null;
   isPlaying: boolean;
   miniPlayerVisible: boolean;
-  videoExpanded: boolean;
 }
 
 @Injectable({
@@ -20,8 +19,7 @@ export class MusicPlayerService {
     currentIndex: -1,
     currentSong: null,
     isPlaying: false,
-    miniPlayerVisible: false,
-    videoExpanded: false
+    miniPlayerVisible: false
   };
 
   private stateSubject = new BehaviorSubject<PlayerState>(this.initialState);
@@ -46,8 +44,7 @@ export class MusicPlayerService {
       queue: [...allSongs], // Create a copy to prevent external changes from affecting the queue
       currentIndex: currentSongIndex,
       currentSong: song,
-      miniPlayerVisible: true,
-      videoExpanded: false
+      miniPlayerVisible: true
     });
   }
 
@@ -161,16 +158,6 @@ export class MusicPlayerService {
     this.stateSubject.next({
       ...this.currentState,
       isPlaying
-    });
-  }
-
-  /**
-   * Toggle video expanded state
-   */
-  toggleVideoExpanded(): void {
-    this.stateSubject.next({
-      ...this.currentState,
-      videoExpanded: !this.currentState.videoExpanded
     });
   }
 
