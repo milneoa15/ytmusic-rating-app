@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { Router, NavigationStart } from '@angular/router';
 import { RouterOutlet } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -43,6 +43,7 @@ export class App implements OnInit, OnDestroy {
 
   // Queue list reference for auto-scroll
   @ViewChild('queueList') queueList: ElementRef<HTMLElement> | undefined;
+  @ViewChild('volumeControl') volumeControlRef: ElementRef<HTMLElement> | undefined;
 
   constructor(
     public musicPlayerService: MusicPlayerService,
@@ -239,6 +240,18 @@ export class App implements OnInit, OnDestroy {
 
   toggleVolumeSlider(): void {
     this.showVolumeSlider = !this.showVolumeSlider;
+  }
+
+  @HostListener('document:mousedown', ['$event'])
+  handleDocumentClick(event: MouseEvent): void {
+    if (!this.showVolumeSlider) return;
+    const target = event.target as Node | null;
+    const host = this.volumeControlRef?.nativeElement;
+    if (!host || !target) return;
+    if (!host.contains(target)) {
+      this.showVolumeSlider = false;
+      this.cdr.detectChanges();
+    }
   }
 
   togglePlayback(event?: Event): void {
