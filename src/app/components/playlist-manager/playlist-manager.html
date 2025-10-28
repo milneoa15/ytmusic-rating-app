@@ -29,12 +29,20 @@
           <button class="action-btn" (click)="selectAllYoutube()">Select All</button>
           <button class="action-btn" (click)="deselectAllYoutube()">Deselect All</button>
         </div>
-        <button
-          class="import-btn"
-          (click)="importSelectedPlaylists()"
-          [disabled]="selectedYoutubePlaylistIds.size === 0 || isLoadingPlaylists">
-          {{ isLoadingPlaylists ? 'Loading...' : `Import ${selectedYoutubePlaylistIds.size || ''} Selected` }}
-        </button>
+        <div class="primary-actions">
+          <button
+            class="liked-btn"
+            (click)="importLikedMusicPlaylist()"
+            [disabled]="isLoadingPlaylists || isImporting">
+            Import Liked Music
+          </button>
+          <button
+            class="import-btn"
+            (click)="importSelectedPlaylists()"
+            [disabled]="selectedYoutubePlaylistIds.size === 0 || isLoadingPlaylists">
+            {{ isLoadingPlaylists ? 'Loading...' : `Import ${selectedYoutubePlaylistIds.size || ''} Selected` }}
+          </button>
+        </div>
       </div>
 
       <div *ngIf="isLoadingPlaylists && youtubePlaylists.length === 0" class="loading">
