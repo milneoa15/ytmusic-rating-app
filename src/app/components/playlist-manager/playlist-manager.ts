@@ -242,91 +242,17 @@ export class PlaylistManager implements OnInit {
     this.isImporting = true;
     this.importErrorMessage = '';
     this.importProgress = 0;
-
     const selectedPlaylists = this.youtubePlaylists.filter(p => this.selectedYoutubePlaylistIds.has(p.id));
-    const totalPlaylists = selectedPlaylists.length;
-    let completedPlaylists = 0;
 
     // Create an array of observables for fetching songs from each playlist
-    const playlistObservables = selectedPlaylists.map(playlist => {
-      this.currentlyImportingPlaylist = playlist.title;
-      return this.youtubeMusicService.getPlaylistSongs(playlist.id);
-    });
+    const playlistObservables = selectedPlaylists.map(playlist =>
+      this.youtubeMusicService.getPlaylistSongs(playlist.id)
+    );
 
     // Fetch all playlists' songs in parallel
     forkJoin(playlistObservables).subscribe({
       next: (songsArrays: Song[][]) => {
-        const userId = this.authService.currentUserValue?.id;
-        const existingSongMap = new Map<string, Song>();
-
-        if (userId) {
-          const previouslyImportedSongs = this.storageService.getImportedSongs(userId);
-          previouslyImportedSongs.forEach(existingSong => {
-            const key = this.buildSongKey(existingSong.title, existingSong.artist);
-            existingSongMap.set(key, existingSong);
-          });
-        }
-
-        const songMap = new Map<string, Song>();
-        const playlistSongIds: string[][] = [];
-
-        songsArrays.forEach((songs, index) => {
-          const canonicalIds: string[] = [];
-
-          songs.forEach(song => {
-            const songKey = this.buildSongKey(song.title, song.artist);
-            let canonicalSong = songMap.get(songKey);
-
-            if (!canonicalSong) {
-              const existingSong = existingSongMap.get(songKey);
-              const normalizedSong: Song = {
-                ...(existingSong ?? {}),
-                ...song,
-                id: existingSong?.id || this.generateCanonicalSongId(song)
-              };
-
-              songMap.set(songKey, normalizedSong);
-              existingSongMap.set(songKey, normalizedSong);
-              canonicalSong = normalizedSong;
-            }
-
-            canonicalIds.push(canonicalSong.id);
-          });
-
-          playlistSongIds[index] = Array.from(new Set(canonicalIds));
-          completedPlaylists++;
-          this.importProgress = Math.round((completedPlaylists / totalPlaylists) * 100);
-        });
-
-        const uniqueSongs = Array.from(songMap.values());
-
-        if (userId) {
-          this.storageService.saveImportedSongs(userId, uniqueSongs);
-
-          selectedPlaylists.forEach((playlist, index) => {
-            if (this.saveAsLocalPlaylistIds.has(playlist.id)) {
-              const songIds = playlistSongIds[index] ?? [];
-
-              this.storageService.createLocalPlaylist(
-                userId,
-                playlist.title,
-                playlist.description || `Imported from YouTube Music`
-              );
-
-              const localPlaylists = this.storageService.getLocalPlaylists(userId);
-              const localPlaylist = localPlaylists[localPlaylists.length - 1];
-
-              if (localPlaylist) {
-                this.storageService.addSongsToLocalPlaylist(userId, localPlaylist.id, songIds);
-              }
-            }
-          });
-        }
-
-        console.log(`✅ Imported ${uniqueSongs.length} unique songs from ${totalPlaylists} playlists`);
-
-        // Navigate to library view
-        this.router.navigate(['/library']);
+        this.processPlaylistImportResults(selectedPlaylists, songsArrays, new Set(this.saveAsLocalPlaylistIds));
       },
       error: (error: any) => {
         this.importErrorMessage = 'Failed to import playlists. Please try again.';
@@ -334,6 +260,119 @@ export class PlaylistManager implements OnInit {
         this.isImporting = false;
       }
     });
+  }
+
+  importLikedMusicPlaylist(): void {
+    if (this.isImporting) {
+      return;
+    }
+
+    this.isImporting = true;
+    this.importErrorMessage = '';
+    this.importProgress = 0;
+
+    const likedPlaylist = {
+      id: 'LM',
+      title: 'Liked Music',
+      description: 'Imported from your YouTube Music likes'
+    };
+
+    this.currentlyImportingPlaylist = likedPlaylist.title;
+
+    this.youtubeMusicService.getPlaylistSongs(likedPlaylist.id).subscribe({
+      next: (songs: Song[]) => {
+        this.processPlaylistImportResults([likedPlaylist], [songs], new Set());
+      },
+      error: (error: any) => {
+        this.importErrorMessage = 'Failed to import your Liked Music playlist. Please try again.';
+        console.error('Error importing Liked Music playlist:', error);
+        this.isImporting = false;
+      }
+    });
+  }
+
+  private processPlaylistImportResults(
+    selectedPlaylists: Array<Pick<Playlist, 'id' | 'title' | 'description'>>,
+    songsArrays: Song[][],
+    playlistsToSaveLocally: Set<string>
+  ): void {
+    if (selectedPlaylists.length === 0) {
+      this.isImporting = false;
+      return;
+    }
+
+    const userId = this.authService.currentUserValue?.id;
+
+    if (!userId) {
+      this.importErrorMessage = 'You must be signed in to import playlists.';
+      this.isImporting = false;
+      return;
+    }
+
+    const existingSongMap = new Map<string, Song>();
+    const previouslyImportedSongs = this.storageService.getImportedSongs(userId);
+    previouslyImportedSongs.forEach(existingSong => {
+      const key = this.buildSongKey(existingSong.title, existingSong.artist);
+      existingSongMap.set(key, existingSong);
+    });
+
+    const songMap = new Map<string, Song>();
+    const playlistSongIds: string[][] = [];
+
+    selectedPlaylists.forEach((playlist, index) => {
+      const songs = songsArrays[index] ?? [];
+      const canonicalIds: string[] = [];
+
+      this.currentlyImportingPlaylist = playlist.title;
+
+      songs.forEach(song => {
+        const songKey = this.buildSongKey(song.title, song.artist);
+        let canonicalSong = songMap.get(songKey);
+
+        if (!canonicalSong) {
+          const existingSong = existingSongMap.get(songKey);
+          const normalizedSong: Song = {
+            ...(existingSong ?? {}),
+            ...song,
+            id: existingSong?.id || this.generateCanonicalSongId(song)
+          };
+
+          songMap.set(songKey, normalizedSong);
+          existingSongMap.set(songKey, normalizedSong);
+          canonicalSong = normalizedSong;
+        }
+
+        canonicalIds.push(canonicalSong.id);
+      });
+
+      playlistSongIds[index] = Array.from(new Set(canonicalIds));
+      this.importProgress = Math.round(((index + 1) / selectedPlaylists.length) * 100);
+    });
+
+    const uniqueSongs = Array.from(songMap.values());
+    this.storageService.saveImportedSongs(userId, uniqueSongs);
+
+    selectedPlaylists.forEach((playlist, index) => {
+      if (!playlistsToSaveLocally.has(playlist.id)) {
+        return;
+      }
+
+      const songIds = playlistSongIds[index] ?? [];
+      const localPlaylist = this.storageService.createLocalPlaylist(
+        userId,
+        playlist.title,
+        playlist.description || `Imported from YouTube Music`
+      );
+
+      if (songIds.length > 0) {
+        this.storageService.addSongsToLocalPlaylist(userId, localPlaylist.id, songIds);
+      }
+    });
+
+    console.log(`✅ Imported ${uniqueSongs.length} unique songs from ${selectedPlaylists.length} playlist(s)`);
+
+    this.isImporting = false;
+    this.router.navigate(['/library']);
   }
 
   private buildSongKey(title: string, artist: string): string {
