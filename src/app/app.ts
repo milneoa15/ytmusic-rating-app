@@ -82,7 +82,7 @@ export class App implements OnInit, OnDestroy {
           );
 
           if (confirmed) {
-            this.closePlayer();
+            await this.closePlayer(undefined, true);
             // Navigate with the preserved state
             this.router.navigate(['/rating'], { state: navigationState });
           }
@@ -314,7 +314,26 @@ export class App implements OnInit, OnDestroy {
     return `${m}:${s}`;
   }
 
-  closePlayer(): void {
+  async closePlayer(event?: Event, skipConfirm = false): Promise<void> {
+    event?.stopPropagation();
+
+    if (!skipConfirm) {
+      const confirmed = await this.modalService.confirm(
+        'Close player?',
+        'Closing the player will stop playback and clear your queue. Continue?',
+        'Close player',
+        'Keep listening'
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    this.finalizePlayerClose();
+  }
+
+  private finalizePlayerClose(): void {
     this.musicPlayerService.closePlayer();
     this.stopProgressTimer();
     try { this.ytPlayer?.stopVideo(); } catch {}
