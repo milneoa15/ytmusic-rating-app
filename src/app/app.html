@@ -99,18 +99,51 @@
           <div class="queue-rating" *ngIf="song.rating">
             <span class="rating-badge">{{ song.rating }}/10</span>
           </div>
-          <button *ngIf="i < musicPlayerService.getQueue().length - 1"
-                  class="cutoff-queue-btn"
-                  (click)="cutoffQueueAt(i, $event)"
-                  title="Remove all songs after this">
-            ✂
+          <button
+            type="button"
+            class="queue-menu-trigger"
+            (click)="toggleQueueActionMenu(i, $event)"
+            [class.active]="queueActionMenuIndex === i"
+            [attr.aria-expanded]="queueActionMenuIndex === i"
+            aria-haspopup="true"
+            aria-label="Queue actions"
+          >
+            ⋮
           </button>
-          <button *ngIf="i !== musicPlayerService.getCurrentIndex()"
-                  class="remove-from-queue-btn"
-                  (click)="removeFromQueue(i); $event.stopPropagation()"
-                  aria-label="Remove from queue">
-            ✕
-          </button>
+          <div
+            *ngIf="queueActionMenuIndex === i"
+            class="queue-actions-menu"
+            role="menu"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              (click)="cutoffQueueAt(i, $event)"
+              [disabled]="i >= musicPlayerService.getQueue().length - 1"
+            >
+              <span class="menu-primary">Trim queue after this</span>
+              <span
+                class="menu-secondary"
+                *ngIf="i >= musicPlayerService.getQueue().length - 1"
+              >
+                End of queue
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              (click)="removeFromQueue(i, $event)"
+              [disabled]="i === musicPlayerService.getCurrentIndex()"
+            >
+              <span class="menu-primary">Remove from queue</span>
+              <span
+                class="menu-secondary"
+                *ngIf="i === musicPlayerService.getCurrentIndex()"
+              >
+                Now playing
+              </span>
+            </button>
+          </div>
           <div *ngIf="i === musicPlayerService.getCurrentIndex()" class="now-playing-badge">
             Now Playing
           </div>

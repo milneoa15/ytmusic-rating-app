@@ -38,6 +38,7 @@ export class App implements OnInit, OnDestroy {
   // Queue management
   showQueue: boolean = false;
   showVolumeSlider: boolean = false;
+  queueActionMenuIndex: number | null = null;
   private playerStateSubscription: Subscription | null = null;
   private navigationSubscription: Subscription | null = null;
 
@@ -244,12 +245,47 @@ export class App implements OnInit, OnDestroy {
 
   @HostListener('document:mousedown', ['$event'])
   handleDocumentClick(event: MouseEvent): void {
-    if (!this.showVolumeSlider) return;
     const target = event.target as Node | null;
-    const host = this.volumeControlRef?.nativeElement;
-    if (!host || !target) return;
-    if (!host.contains(target)) {
+    let shouldDetect = false;
+
+    if (this.showVolumeSlider) {
+      const host = this.volumeControlRef?.nativeElement;
+      if (host && target && !host.contains(target)) {
+        this.showVolumeSlider = false;
+        shouldDetect = true;
+      }
+    }
+
+    if (this.queueActionMenuIndex !== null) {
+      const insideQueueActions = target instanceof HTMLElement ? target.closest('.queue-actions') : null;
+      if (!insideQueueActions) {
+        this.queueActionMenuIndex = null;
+        shouldDetect = true;
+      }
+    }
+
+    if (shouldDetect) {
+      this.cdr.detectChanges();
+    }
+  }
+
+  @HostListener('document:keydown.escape', ['$event'])
+  handleEscapeKey(event: Event): void {
+    const keyboardEvent = event as KeyboardEvent;
+    let updated = false;
+
+    if (this.queueActionMenuIndex !== null) {
+      this.queueActionMenuIndex = null;
+      updated = true;
+    }
+
+    if (this.showVolumeSlider) {
       this.showVolumeSlider = false;
+      updated = true;
+    }
+
+    if (updated) {
+      keyboardEvent.stopPropagation();
       this.cdr.detectChanges();
     }
   }
@@ -314,19 +350,37 @@ export class App implements OnInit, OnDestroy {
 
   toggleQueue(): void {
     this.showQueue = !this.showQueue;
+    if (!this.showQueue) {
+      this.queueActionMenuIndex = null;
+    }
   }
 
-  removeFromQueue(index: number): void {
+  toggleQueueActionMenu(index: number, event: Event): void {
+    event.stopPropagation();
+    this.queueActionMenuIndex = this.queueActionMenuIndex === index ? null : index;
+  }
+
+  removeFromQueue(index: number, event?: Event): void {
+    event?.stopPropagation();
     const currentIndex = this.musicPlayerService.getCurrentIndex();
     if (index === currentIndex) {
       return;
     }
     this.musicPlayerService.removeFromQueue(index);
+    if (this.queueActionMenuIndex !== null) {
+      this.queueActionMenuIndex = null;
+    }
   }
 
   cutoffQueueAt(index: number, event: Event): void {
     event.stopPropagation();
+    if (index >= this.musicPlayerService.getQueue().length - 1) {
+      return;
+    }
     this.musicPlayerService.cutoffQueueAt(index);
+    if (this.queueActionMenuIndex !== null) {
+      this.queueActionMenuIndex = null;
+    }
   }
 
   // Drag and drop state
@@ -366,6 +420,9 @@ export class App implements OnInit, OnDestroy {
   };
 
   onDragStart(event: DragEvent, index: number): void {
+    if (this.queueActionMenuIndex !== null) {
+      this.queueActionMenuIndex = null;
+    }
     this.draggedIndex = index;
     document.body.classList.add('dragging-queue-item');
     document.addEventListener('dragover', this.globalDragOverHandler, true);
