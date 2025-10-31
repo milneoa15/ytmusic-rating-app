@@ -1113,9 +1113,17 @@ export class SongLibrary implements OnInit, OnDestroy {
     this.applyFilters();
   }
 
-  confirmBulkUnrate(): void {
+  async confirmBulkUnrate(): Promise<void> {
     const userId = this.authService.currentUserValue?.id;
     if (!userId) return;
+
+    const confirmed = await this.modalService.confirm(
+      'Confirm Remove Ratings',
+      `Set ${this.selectedSongs.size} song${this.selectedSongs.size > 1 ? 's' : ''} to unrated?`,
+      'Set to Unrated'
+    );
+
+    if (!confirmed) return;
 
     this.selectedSongs.forEach(songId => {
       const song = this.allSongs.find(s => s.id === songId);
