@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 
 export interface AppConfig {
   googleClientId?: string;
+  redirectUri?: string;
 }
 
 @Injectable({
@@ -30,5 +31,9 @@ export class AppConfigService {
 
   get googleClientId(): string | undefined {
     return this.appConfig?.googleClientId;
+  }
+
+  get redirectUri(): string | undefined {
+    return this.appConfig?.redirectUri;
   }
 }
