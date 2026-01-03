@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Router } from '@angular/router';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { User } from '../models/user.model';
-import { environment } from '../../environments/environment';
+import { AppConfigService } from './app-config.service';
 
 @Injectable({
   providedIn: 'root'
@@ -11,20 +11,22 @@ export class AuthService {
   private currentUserSubject: BehaviorSubject<User | null>;
   public currentUser: Observable<User | null>;
 
-  // OAuth 2.0 Configuration - now using environment variables
-  private readonly CLIENT_ID = environment.googleClientId;
-  private readonly CLIENT_SECRET = environment.googleClientSecret;
-  private readonly REDIRECT_URI = environment.redirectUri;
+  // OAuth 2.0 Configuration
+  private readonly CLIENT_ID: string;
+  private readonly REDIRECT_URI: string;
   private readonly SCOPES = [
     'https://www.googleapis.com/auth/youtube',
     'https://www.googleapis.com/auth/youtube.force-ssl'
   ].join(' ');
   private readonly AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
-  private readonly TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
   
   private readonly USE_MOCK_AUTH = false; // Set to false when ready to use real OAuth
 
-  constructor(private router: Router) {
+  constructor(private router: Router, private appConfig: AppConfigService) {
+    // Initialize config from the AppConfigService, guaranteed to be loaded by APP_INITIALIZER
+    this.CLIENT_ID = this.appConfig.googleClientId ?? '';
+    this.REDIRECT_URI = this.appConfig.redirectUri ?? '';
+
     const storedUser = localStorage.getItem('currentUser');
     this.currentUserSubject = new BehaviorSubject<User | null>(
       storedUser ? JSON.parse(storedUser) : null
@@ -90,46 +92,43 @@ export class AuthService {
 
     if (code && state === storedState) {
       localStorage.removeItem('oauth_state');
-      this.exchangeCodeForToken(code);
+      this.fetchTokensFromBackend(code);
     }
   }
 
   /**
-   * Exchange authorization code for access token
+   * Exchange authorization code for an access token by calling our secure backend endpoint.
    */
-  private async exchangeCodeForToken(code: string): Promise<void> {
-    console.log('🔄 Starting token exchange...');
+  private async fetchTokensFromBackend(code: string): Promise<void> {
+    console.log('🔄 Exchanging code via secure backend...');
     try {
-      const response = await fetch(this.TOKEN_ENDPOINT, {
+      // Note: We are not using HttpClient from Angular here because this service
+      // is constructed very early, and HttpClient may not be fully ready.
+      // A standard `fetch` is simpler and avoids dependency issues here.
+      const response = await fetch('/api/auth/callback', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
-          code: code,
-          client_id: this.CLIENT_ID,
-          client_secret: this.CLIENT_SECRET,
-          redirect_uri: this.REDIRECT_URI,
-          grant_type: 'authorization_code'
-        })
+        body: JSON.stringify({ code })
       });
 
-      console.log('📡 Token response status:', response.status);
+      console.log('📡 Backend token response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ Token exchange failed:', errorData);
+        console.error('❌ Backend token exchange failed:', errorData);
         throw new Error(`Token exchange failed: ${errorData.error || 'Unknown error'}`);
       }
 
       const data = await response.json();
-      console.log('✅ Token exchange successful!');
+      console.log('✅ Backend token exchange successful!');
       await this.handleTokenResponse(data);
       
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     } catch (error) {
-      console.error('❌ Error exchanging code for token:', error);
+      console.error('❌ Error fetching tokens from backend:', error);
       alert('Authentication failed. Please check the console for details.');
     }
   }
@@ -201,43 +200,38 @@ export class AuthService {
    * Refresh the access token using the refresh token
    */
   async refreshAccessToken(): Promise<boolean> {
+    console.log('[AuthService] Refreshing access token via secure backend...');
     if (this.USE_MOCK_AUTH) return true;
 
     const user = this.currentUserValue;
     if (!user?.refreshToken) {
-      console.error('No refresh token available');
+      console.error('[AuthService] No refresh token available for refresh.');
+      this.logout();
       return false;
     }
 
     try {
-      const response = await fetch(this.TOKEN_ENDPOINT, {
+      const response = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: this.CLIENT_ID,
-          client_secret: this.CLIENT_SECRET,
-          refresh_token: user.refreshToken,
-          grant_type: 'refresh_token'
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: user.refreshToken })
       });
 
       if (!response.ok) {
-        throw new Error('Token refresh failed');
+        throw new Error('Token refresh failed with status ' + response.status);
       }
 
       const data = await response.json();
       this.updateUserTokens(
         data.access_token,
-        data.refresh_token || user.refreshToken,
+        data.refresh_token || user.refreshToken, // Use new refresh token if provided
         new Date(Date.now() + data.expires_in * 1000)
       );
-
+      console.log('[AuthService] Token refresh successful.');
       return true;
     } catch (error) {
       console.error('Error refreshing token:', error);
-      this.logout();
+      this.logout(); // Logout on refresh failure
       return false;
     }
   }
