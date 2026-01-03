@@ -3,6 +3,7 @@ import { authenticateRequest } from './_lib/auth';
 import { methodNotAllowed, normalizeBody, sendJson } from './_lib/http';
 import { getServiceSupabaseClient } from './_lib/supabaseClient';
 
+// From single rating
 type SongRow = {
   id: string;
   youtube_song_id: string | null;
@@ -23,8 +24,34 @@ type RatingRow = {
   songs?: SongRow;
 };
 
+// From bulk ratings
+type SongPayload = {
+  id: string;
+  videoId?: string;
+  originalVideoId?: string;
+  fallbackVideoId?: string;
+  videoAvailabilityStatus?: string;
+  videoUnavailableReason?: string;
+  videoCheckedAt?: string;
+  title?: string;
+  artist?: string;
+  thumbnailUrl?: string;
+};
+
+type RatingUpdatePayload = {
+  song?: SongPayload;
+  rating?: number;
+};
+
+type BulkRatingsBody = {
+  updates?: RatingUpdatePayload[];
+  deletes?: string[];
+};
+
+
+// Helper functions
 function parseRating(value: unknown): number {
-  if (typeof value !== 'number') {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
     throw new Error('Rating must be a number.');
   }
   if (value < 1 || value > 10) {
@@ -33,11 +60,33 @@ function parseRating(value: unknown): number {
   return Math.round(value);
 }
 
+function normalizeSongPayload(entry: RatingUpdatePayload): SongPayload {
+  if (!entry.song || typeof entry.song.id !== 'string') {
+    throw new Error('Each rating update must include a song with an id.');
+  }
+
+  const song = entry.song;
+  return {
+    id: song.id,
+    videoId: song.videoId,
+    originalVideoId: song.originalVideoId ?? song.videoId,
+    fallbackVideoId: song.fallbackVideoId,
+    videoAvailabilityStatus: song.videoAvailabilityStatus,
+    videoUnavailableReason: song.videoUnavailableReason,
+    videoCheckedAt: song.videoCheckedAt,
+    title: song.title,
+    artist: song.artist,
+    thumbnailUrl: song.thumbnailUrl
+  };
+}
+
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   try {
     const auth = await authenticateRequest(req);
     const supabase = getServiceSupabaseClient();
 
+    // GET (Unaffected)
     if (req.method === 'GET') {
       const { songId, minRating, maxRating } = req.query;
       let query = supabase
@@ -103,55 +152,131 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return;
     }
 
+    // POST (Combined Logic)
     if (req.method === 'POST') {
-      const { song, rating } = normalizeBody<{ song?: any; rating?: number }>(req);
-      if (!song?.id) {
-        res.status(400).json({ error: 'song.id is required.' });
-        return;
-      }
+      const body = normalizeBody<any>(req);
 
-      const parsedRating = parseRating(rating);
+      // --- BULK LOGIC ---
+      if (body.updates || body.deletes) {
+        const updates = Array.isArray(body.updates) ? body.updates : [];
+        const deletes = Array.isArray(body.deletes) ? body.deletes.filter(id => typeof id === 'string' && id.length > 0) : [];
 
-      const upsertSong = await supabase.from('songs').upsert(
-        {
-          id: song.id,
-          youtube_song_id: song.videoId ?? null,
-          original_youtube_song_id: song.originalVideoId ?? song.videoId ?? null,
-          fallback_youtube_song_id: song.fallbackVideoId ?? null,
-          video_availability_status: song.videoAvailabilityStatus ?? null,
-          video_unavailable_reason: song.videoUnavailableReason ?? null,
-          video_checked_at: song.videoCheckedAt ?? null,
-          title: song.title,
-          artist: song.artist ?? null,
-          thumbnail_url: song.thumbnailUrl ?? null
-        },
-        { onConflict: 'id' }
-      );
+        const normalizedUpdates = updates.map(update => {
+          const song = normalizeSongPayload(update);
+          const rating = parseRating(update.rating);
+          return { song, rating };
+        });
 
-      if (upsertSong.error) {
-        throw upsertSong.error;
-      }
+        if (normalizedUpdates.length === 0 && deletes.length === 0) {
+          return sendJson(res, 200, { success: true, updated: 0, deleted: 0 });
+        }
 
-      const { error } = await supabase
-        .from('user_songs')
-        .upsert(
-          {
+        if (normalizedUpdates.length > 0) {
+          const songRecords = normalizedUpdates.map(({ song }) => ({
+            id: song.id,
+            youtube_song_id: song.videoId ?? null,
+            original_youtube_song_id: song.originalVideoId ?? song.videoId ?? null,
+            fallback_youtube_song_id: song.fallbackVideoId ?? null,
+            video_availability_status: song.videoAvailabilityStatus ?? null,
+            video_unavailable_reason: song.videoUnavailableReason ?? null,
+            video_checked_at: song.videoCheckedAt ?? null,
+            title: song.title ?? null,
+            artist: song.artist ?? null,
+            thumbnail_url: song.thumbnailUrl ?? null
+          }));
+
+          const { error: songError } = await supabase.from('songs').upsert(songRecords, { onConflict: 'id' });
+          if (songError) {
+            throw songError;
+          }
+
+          const nowIso = new Date().toISOString();
+          const ratingRecords = normalizedUpdates.map(({ song, rating }) => ({
             user_id: auth.userId,
             song_id: song.id,
-            rating: parsedRating,
-            rated_at: new Date().toISOString()
+            rating,
+            rated_at: nowIso
+          }));
+
+          const { error: ratingError } = await supabase
+            .from('user_songs')
+            .upsert(ratingRecords, { onConflict: 'user_id,song_id' });
+
+          if (ratingError) {
+            throw ratingError;
+          }
+        }
+
+        if (deletes.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('user_songs')
+            .delete()
+            .eq('user_id', auth.userId)
+            .in('song_id', deletes);
+
+          if (deleteError) {
+            throw deleteError;
+          }
+        }
+
+        return sendJson(res, 200, {
+          success: true,
+          updated: normalizedUpdates.length,
+          deleted: deletes.length
+        });
+      }
+      
+      // --- SINGLE RATING LOGIC ---
+      else {
+        const { song, rating } = body;
+        if (!song?.id) {
+          res.status(400).json({ error: 'song.id is required.' });
+          return;
+        }
+
+        const parsedRating = parseRating(rating);
+
+        const upsertSong = await supabase.from('songs').upsert(
+          {
+            id: song.id,
+            youtube_song_id: song.videoId ?? null,
+            original_youtube_song_id: song.originalVideoId ?? song.videoId ?? null,
+            fallback_youtube_song_id: song.fallbackVideoId ?? null,
+            video_availability_status: song.videoAvailabilityStatus ?? null,
+            video_unavailable_reason: song.videoUnavailableReason ?? null,
+            video_checked_at: song.videoCheckedAt ?? null,
+            title: song.title,
+            artist: song.artist ?? null,
+            thumbnail_url: song.thumbnailUrl ?? null
           },
-          { onConflict: 'user_id,song_id' }
+          { onConflict: 'id' }
         );
 
-      if (error) {
-        throw error;
-      }
+        if (upsertSong.error) {
+          throw upsertSong.error;
+        }
 
-      sendJson(res, 200, { success: true });
-      return;
+        const { error } = await supabase
+          .from('user_songs')
+          .upsert(
+            {
+              user_id: auth.userId,
+              song_id: song.id,
+              rating: parsedRating,
+              rated_at: new Date().toISOString()
+            },
+            { onConflict: 'user_id,song_id' }
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        return sendJson(res, 200, { success: true });
+      }
     }
 
+    // DELETE (Unaffected)
     if (req.method === 'DELETE') {
       const { songId: bodySongId } = normalizeBody<{ songId?: string }>(req);
       const songId = (req.query['songId'] as string) ?? bodySongId;
