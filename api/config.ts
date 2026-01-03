@@ -8,8 +8,8 @@ export default function handler(req: VercelRequest, res: VercelResponse): void {
 
   // Only public, non-sensitive keys should be exposed here.
   const config = {
-    googleClientId: process.env.GOOGLE_CLIENT_ID,
-    redirectUri: process.env.REDIRECT_URI,
+    googleClientId: process.env['GOOGLE_CLIENT_ID'],
+    redirectUri: process.env['REDIRECT_URI'],
   };
 
   // Set cache headers to encourage caching of this public config

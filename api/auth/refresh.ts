@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (!response.ok) {
       const errorData = await response.json();
       console.error('Token refresh with Google failed:', errorData);
-      return sendJson(res, response.status, { error: `Token refresh failed: ${errorData.error_description || 'Unknown error'}`});
+      return sendJson(res, response.status, { error: `Token refresh failed: ${(errorData as any).error_description || 'Unknown error'}`});
     }
 
     const tokenData = await response.json();
