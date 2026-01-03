@@ -687,17 +687,23 @@ export class StorageService implements OnDestroy {
   }
 
   private async getAccessToken(): Promise<string | null> {
+    console.log('[StorageService] getAccessToken: Attempting to get token.');
     const user = this.authService.currentUserValue;
     if (!user) {
+      console.log('[StorageService] getAccessToken: FAILED - No user found in authService.');
       return null;
     }
+    console.log('[StorageService] getAccessToken: User object found:', user);
 
     const tokenValid = await this.authService.ensureValidToken();
     if (!tokenValid) {
+      console.log('[StorageService] getAccessToken: FAILED - ensureValidToken returned false.');
       return null;
     }
-
-    return this.authService.currentUserValue?.youtubeAccessToken ?? null;
+    
+    const token = this.authService.currentUserValue?.youtubeAccessToken ?? null;
+    console.log(`[StorageService] getAccessToken: SUCCESS - Returning token: ${token ? 'found' : 'null'}`);
+    return token;
   }
 
   private async syncFromRemote(): Promise<void> {

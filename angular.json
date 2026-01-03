@@ -70,7 +70,8 @@
               "buildTarget": "ytmusic-rating-app:build:production"
             },
             "development": {
-              "buildTarget": "ytmusic-rating-app:build:development"
+              "buildTarget": "ytmusic-rating-app:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"
@@ -100,5 +101,8 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }

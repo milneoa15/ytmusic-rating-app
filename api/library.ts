@@ -13,8 +13,6 @@ type SongRow = {
   video_checked_at: string | null;
   title: string | null;
   artist: string | null;
-  album: string | null;
-  duration_text: string | null;
   thumbnail_url: string | null;
 } | null;
 
@@ -57,8 +55,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               video_checked_at,
               title,
               artist,
-              album,
-              duration_text,
               thumbnail_url
             )
           `
@@ -119,8 +115,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         videoCheckedAt: songRow?.video_checked_at ?? metadata['videoCheckedAt'] ?? undefined,
         title: songRow?.title ?? metadata['title'] ?? 'Unknown title',
         artist: songRow?.artist ?? metadata['artist'] ?? undefined,
-        album: songRow?.album ?? metadata['album'] ?? undefined,
-        duration: songRow?.duration_text ?? metadata['duration'] ?? undefined,
         thumbnailUrl: songRow?.thumbnail_url ?? metadata['thumbnailUrl'] ?? undefined,
         importedAt: entry.imported_at
       };

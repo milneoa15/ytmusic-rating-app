@@ -13,8 +13,6 @@ type SongPayload = {
   videoCheckedAt?: string;
   title?: string;
   artist?: string;
-  album?: string;
-  duration?: string;
   thumbnailUrl?: string;
 };
 
@@ -54,8 +52,6 @@ function normalizeSongPayload(entry: RatingUpdatePayload): SongPayload {
     videoCheckedAt: song.videoCheckedAt,
     title: song.title,
     artist: song.artist,
-    album: song.album,
-    duration: song.duration,
     thumbnailUrl: song.thumbnailUrl
   };
 }
@@ -96,8 +92,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         video_checked_at: song.videoCheckedAt ?? null,
         title: song.title ?? null,
         artist: song.artist ?? null,
-        album: song.album ?? null,
-        duration_text: song.duration ?? null,
         thumbnail_url: song.thumbnailUrl ?? null
       }));
 

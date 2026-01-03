@@ -13,9 +13,6 @@ type SongRow = {
   video_checked_at: string | null;
   title: string | null;
   artist: string | null;
-  album: string | null;
-  duration_seconds: number | null;
-  duration_text: string | null;
   thumbnail_url: string | null;
 } | null;
 
@@ -60,9 +57,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               video_checked_at,
               title,
               artist,
-              album,
-              duration_seconds,
-              duration_text,
               thumbnail_url
             )
           `
@@ -100,8 +94,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               videoCheckedAt: entry.songs.video_checked_at ?? undefined,
               title: entry.songs.title,
               artist: entry.songs.artist,
-              album: entry.songs.album ?? undefined,
-              duration: entry.songs.duration_text ?? undefined,
               thumbnailUrl: entry.songs.thumbnail_url ?? undefined
             }
           : null
@@ -131,8 +123,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           video_checked_at: song.videoCheckedAt ?? null,
           title: song.title,
           artist: song.artist ?? null,
-          album: song.album ?? null,
-          duration_text: song.duration ?? null,
           thumbnail_url: song.thumbnailUrl ?? null
         },
         { onConflict: 'id' }

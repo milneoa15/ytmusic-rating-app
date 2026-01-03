@@ -217,6 +217,7 @@ export class AuthService {
         },
         body: new URLSearchParams({
           client_id: this.CLIENT_ID,
+          client_secret: this.CLIENT_SECRET,
           refresh_token: user.refreshToken,
           grant_type: 'refresh_token'
         })
@@ -229,7 +230,7 @@ export class AuthService {
       const data = await response.json();
       this.updateUserTokens(
         data.access_token,
-        user.refreshToken,
+        data.refresh_token || user.refreshToken,
         new Date(Date.now() + data.expires_in * 1000)
       );
 
@@ -245,19 +246,27 @@ export class AuthService {
    * Check if token is expired and refresh if needed
    */
   async ensureValidToken(): Promise<boolean> {
+    console.log('[AuthService] ensureValidToken: Checking token validity...');
     if (this.USE_MOCK_AUTH) return true;
 
     const user = this.currentUserValue;
-    if (!user?.tokenExpiry) return false;
+    if (!user?.tokenExpiry) {
+      console.log('[AuthService] ensureValidToken: FAILED - User or tokenExpiry is missing.', user);
+      return false;
+    }
 
     const now = new Date();
     const expiry = new Date(user.tokenExpiry);
+    const timeDiff = expiry.getTime() - now.getTime();
+    console.log(`[AuthService] ensureValidToken: Token expires in ${Math.round(timeDiff / 1000 / 60)} minutes.`);
 
     // Refresh if token expires in less than 5 minutes
-    if (expiry.getTime() - now.getTime() < 5 * 60 * 1000) {
+    if (timeDiff < 5 * 60 * 1000) {
+      console.log('[AuthService] ensureValidToken: Token is expiring, attempting refresh.');
       return await this.refreshAccessToken();
     }
 
+    console.log('[AuthService] ensureValidToken: Token is valid.');
     return true;
   }
 

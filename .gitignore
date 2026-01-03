@@ -1,55 +1,28 @@
-# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
-# Compiled output
-/dist
-/tmp
-/out-tsc
-/bazel-out
-
 # Node
-/node_modules
+node_modules
+dist
+.angular
 npm-debug.log
-yarn-error.log
+.nyc_output
+.tmp
+.cache
+/out
+/src/environments/environment.prod.ts
+/.env.local
+/firebase-debug.log
+/karma-debug.log
+/tmp/
 
-# IDEs and editors
-.idea/
-.project
-.classpath
-.c9/
-*.launch
-.settings/
+# Supabase CLI temp files
+supabase/.temp/
+
+# IDEs
+.vscode
+.idea
+*.sublime-project
 *.sublime-workspace
 
-# Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-.history/*
-
-# Miscellaneous
-/.angular/cache
-.sass-cache/
-/connect.lock
-/coverage
-/libpeerconnection.log
-testem.log
-/typings
-__screenshots__/
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Environment files with sensitive data
-/src/environments/environment.ts
-/src/environments/environment.development.ts
-# Keep the production template
-!/src/environments/environment.prod.ts
-.vercel
-
-# AI Assistant documentation (personal notes)
-AGENTS.md
-CLAUDE.md
-.claude
+# Build artifacts
+*.js.map
+*.css.map
+*.tsbuildinfo

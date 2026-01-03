@@ -8,8 +8,6 @@ export interface Song {
   videoCheckedAt?: string;
   title: string;
   artist: string;
-  album?: string;
-  duration?: string;
   thumbnailUrl?: string;
   playlistId?: string;
 }

@@ -626,8 +626,6 @@ export class YoutubeMusicService {
         videoUnavailableReason: resolvedVideoId ? undefined : 'Missing video identifier',
         title: item.snippet.title,
         artist: artistName,
-        album: '', // YouTube API doesn't provide album info directly
-        duration: '', // Would need additional API call to get duration
         thumbnailUrl: item.snippet.thumbnails.medium?.url || 
                       item.snippet.thumbnails.default?.url || 
                       'https://via.placeholder.com/80',
@@ -680,8 +678,6 @@ export class YoutubeMusicService {
         videoId: 'dQw4w9WgXcQ',
         title: 'Never Gonna Give You Up',
         artist: 'Rick Astley',
-        album: 'Whenever You Need Somebody',
-        duration: '3:33',
         thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
         playlistId: playlistId
       },
@@ -690,8 +686,6 @@ export class YoutubeMusicService {
         videoId: 'kJQP7kiw5Fk',
         title: 'Luis Fonsi - Despacito ft. Daddy Yankee',
         artist: 'Luis Fonsi',
-        album: 'VIDA',
-        duration: '4:41',
         thumbnailUrl: 'https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg',
         playlistId: playlistId
       },
@@ -700,8 +694,6 @@ export class YoutubeMusicService {
         videoId: 'fJ9rUzIMcZQ',
         title: 'Queen – Bohemian Rhapsody',
         artist: 'Queen',
-        album: 'A Night at the Opera',
-        duration: '5:55',
         thumbnailUrl: 'https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg',
         playlistId: playlistId
       },
@@ -710,8 +702,6 @@ export class YoutubeMusicService {
         videoId: '9bZkp7q19f0',
         title: 'PSY - GANGNAM STYLE',
         artist: 'officialpsy',
-        album: '',
-        duration: '4:13',
         thumbnailUrl: 'https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg',
         playlistId: playlistId
       },
@@ -720,8 +710,6 @@ export class YoutubeMusicService {
         videoId: 'JGwWNGJdvx8',
         title: 'Ed Sheeran - Shape of You',
         artist: 'Ed Sheeran',
-        album: '÷ (Divide)',
-        duration: '3:54',
         thumbnailUrl: 'https://i.ytimg.com/vi/JGwWNGJdvx8/mqdefault.jpg',
         playlistId: playlistId
       }
