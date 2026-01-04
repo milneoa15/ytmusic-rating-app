@@ -27,9 +27,7 @@ async function syncPlaylistSongs(
   const rows = songIds.map((songId, index) => ({
     playlist_id: playlistId,
     song_id: songId,
-    user_id: userId,
-    position: index,
-    added_at: new Date().toISOString()
+    user_id: userId
   }));
 
   const { error } = await supabase.from('playlist_songs').insert(rows);
@@ -55,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             starred,
             created_at,
             updated_at,
-            playlist_songs:playlist_songs(song_id, position)
+            playlist_songs:playlist_songs(song_id)
           `
         )
         .eq('user_id', auth.userId)
@@ -78,8 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         starred: item.starred ?? false,
         songIds:
           item.playlist_songs
-            ?.sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
-            .map((entry: any) => entry.song_id) ?? [],
+            ?.map((entry: any) => entry.song_id) ?? [],
         createdAt: item.created_at,
         updatedAt: item.updated_at
       }));
