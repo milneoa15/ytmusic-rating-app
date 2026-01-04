@@ -13,8 +13,8 @@ export interface LibraryResponse {
     displayName: string;
     email?: string;
   };
-  songs: Array<Song & { importedAt?: string }>;
-  ratings: Array<{ songId: string; rating: number; ratedAt?: string }>;
+  songs: Array<Song>;
+  ratings: Array<{ songId:string; rating: number }>;
   themes: Array<Theme>;
   songThemes: Array<{ id: string; songId: string; themeId: string }>;
   playlists: Array<LocalPlaylist>;

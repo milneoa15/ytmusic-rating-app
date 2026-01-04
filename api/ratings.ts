@@ -20,7 +20,6 @@ type SongRow = {
 type RatingRow = {
   song_id: string;
   rating: number | null;
-  rated_at: string | null;
   songs?: SongRow;
 };
 
@@ -95,7 +94,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           `
             song_id,
             rating,
-            rated_at,
             songs (
               id,
               youtube_song_id,
@@ -131,7 +129,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const payload = rows.map(entry => ({
         songId: entry.song_id,
         rating: entry.rating,
-        ratedAt: entry.rated_at,
         song: entry.songs
           ? {
               id: entry.songs.id,
@@ -190,12 +187,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             throw songError;
           }
 
-          const nowIso = new Date().toISOString();
           const ratingRecords = normalizedUpdates.map(({ song, rating }) => ({
             user_id: auth.userId,
             song_id: song.id,
-            rating,
-            rated_at: nowIso
+            rating
           }));
 
           const { error: ratingError } = await supabase
@@ -262,8 +257,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             {
               user_id: auth.userId,
               song_id: song.id,
-              rating: parsedRating,
-              rated_at: new Date().toISOString()
+              rating: parsedRating
             },
             { onConflict: 'user_id,song_id' }
           );

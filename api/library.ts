@@ -19,8 +19,6 @@ type SongRow = {
 type UserSongRow = {
   song_id: string;
   rating: number | null;
-  rated_at: string | null;
-  imported_at: string | null;
   metadata: Record<string, any> | null;
   songs?: SongRow;
 };
@@ -42,8 +40,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           `
             song_id,
             rating,
-            rated_at,
-            imported_at,
             metadata,
             songs (
               id,
@@ -115,8 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         videoCheckedAt: songRow?.video_checked_at ?? metadata['videoCheckedAt'] ?? undefined,
         title: songRow?.title ?? metadata['title'] ?? 'Unknown title',
         artist: songRow?.artist ?? metadata['artist'] ?? undefined,
-        thumbnailUrl: songRow?.thumbnail_url ?? metadata['thumbnailUrl'] ?? undefined,
-        importedAt: entry.imported_at
+        thumbnailUrl: songRow?.thumbnail_url ?? metadata['thumbnailUrl'] ?? undefined
       };
     });
 
@@ -124,8 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       .filter(entry => typeof entry.rating === 'number')
       .map(entry => ({
         songId: entry.song_id,
-        rating: entry.rating,
-        ratedAt: entry.rated_at
+        rating: entry.rating
       }));
 
     const themes =

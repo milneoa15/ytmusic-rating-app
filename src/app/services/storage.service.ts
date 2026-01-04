@@ -777,8 +777,7 @@ export class StorageService implements OnDestroy {
       ratingsDb[userId][rating.songId] = {
         songId: rating.songId,
         userId,
-        rating: rating.rating,
-        ratedAt: rating.ratedAt ? new Date(rating.ratedAt) : new Date()
+        rating: rating.rating
       };
     });
     this.saveRatingsDatabase(ratingsDb);
@@ -913,8 +912,7 @@ export class StorageService implements OnDestroy {
     const songRating: SongRating = {
       songId,
       userId,
-      rating,
-      ratedAt: new Date()
+      rating
     };
 
     db[userId][songId] = songRating;

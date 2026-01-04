@@ -31,7 +31,6 @@ type SongRow = {
 
 type UserSongRow = {
   song_id: string;
-  imported_at: string | null;
   metadata: Record<string, any> | null;
   songs?: SongRow;
 };
@@ -47,7 +46,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         .select(
           `
             song_id,
-            imported_at,
             metadata,
             songs (
               id,
@@ -63,8 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             )
           `
         )
-        .eq('user_id', auth.userId)
-        .order('imported_at', { ascending: false });
+        .eq('user_id', auth.userId);
 
       if (error) {
         throw error;
@@ -93,8 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           videoCheckedAt: songRow?.video_checked_at ?? metadata['videoCheckedAt'] ?? undefined,
           title: songRow?.title ?? metadata['title'] ?? 'Unknown title',
           artist: songRow?.artist ?? metadata['artist'] ?? undefined,
-          thumbnailUrl: songRow?.thumbnail_url ?? metadata['thumbnailUrl'] ?? undefined,
-          importedAt: entry.imported_at
+          thumbnailUrl: songRow?.thumbnail_url ?? metadata['thumbnailUrl'] ?? undefined
         };
       });
 
@@ -108,8 +104,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         res.status(400).json({ error: 'songs array is required.' });
         return;
       }
-
-      const nowIso = new Date().toISOString();
 
       for (const song of songs) {
         if (!song.id) {
@@ -137,7 +131,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const userSongRecord: Record<string, any> = {
           user_id: auth.userId,
           song_id: song.id,
-          imported_at: nowIso,
           metadata: {
             title: song.title,
             artist: song.artist,

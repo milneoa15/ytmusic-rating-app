@@ -16,7 +16,6 @@ export interface SongRating {
   songId: string;
   userId: string;
   rating: number; // 1-10
-  ratedAt: Date;
 }
 
 // Extended song info with rating and themes for library view
